@@ -1,42 +1,30 @@
 { pkgs, cudaPackages }:
 
 let
-  # Override the binary-hashes import to use our CUDA 12.6 hashes
-  torchBinOverride = pkgs.python3Packages.torch-bin.overrideAttrs (old: {
-    src = let
-      pyVerNoDot = builtins.replaceStrings [ "." ] [ "" ] pkgs.python3.pythonVersion;
-      srcs = import ./binary-hashes.nix "2.9.1";
-      # Use the cuda12_6 suffix for the key lookup
-      key = "${pkgs.stdenv.system}-${pyVerNoDot}-cuda12_6";
-      unsupported = throw "Unsupported system or Python version for torch CUDA 12.6: ${key}";
-    in
-      pkgs.fetchurl (srcs."${key}" or unsupported);
+  # Get the Python version without dots (e.g., "3.13" -> "313")
+  pythonVersion = pkgs.python3.pythonVersion;
+  pyVerNoDot = builtins.replaceStrings [ "." ] [ "" ] pythonVersion;
 
-    # Update buildInputs to use the provided cudaPackages (12.6)
-    buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux (
-      with cudaPackages;
-      [
-        cuda_nvtx
-        cuda_cudart
-        cuda_cupti
-        cuda_nvrtc
-        cudnn
-        libcublas
-        libcufft
-        libcufile
-        libcurand
-        libcusolver
-        libcusparse
-        libcusparse_lt
-        libnvshmem
-        nccl
-      ]
-    );
+  # Import binary hashes for torch 2.9.1
+  srcs = import ./binary-hashes.nix "2.9.1";
 
-    # Update extraRunpaths to use the provided cudaPackages
-    extraRunpaths = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
-      "${pkgs.lib.getLib cudaPackages.cuda_nvrtc}/lib"
-    ];
-  });
+  # Construct the key for looking up the correct wheel
+  # Format: x86_64-linux-313-cuda12_6
+  key = "${pkgs.stdenv.system}-${pyVerNoDot}-cuda12_6";
+
+  unsupported = throw "Unsupported system or Python version for torch CUDA 12.6: ${key} (available: ${builtins.toString (builtins.attrNames srcs)})";
+
 in
-torchBinOverride
+# First, override the function arguments to use our CUDA 12.6 packages
+(pkgs.python3Packages.torch-bin.override {
+  cudaPackages = cudaPackages;
+}).overrideAttrs (old: {
+  # Then override the source to use the CUDA 12.6 wheel
+  src = pkgs.fetchurl (srcs."${key}" or unsupported);
+})
+
+
+# TODO TODO
+# https://github.com/cachix/devenv-nixpkgs/blob/rolling/pkgs/top-level/cuda-packages.nix
+# PASCAL is only supported by cudNN up to v9.11.1
+# so for PASCAL just using cudePackaged 12.6 is insufficient
