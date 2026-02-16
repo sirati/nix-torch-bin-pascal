@@ -20,11 +20,7 @@ in
   cudaPackages = cudaPackages;
 }).overrideAttrs (old: {
   # Then override the source to use the CUDA 12.6 wheel
+  # Note: The same binary wheel works for both regular and Pascal variants
+  # The difference is only in the CUDA runtime libraries (cuDNN, cuTENSOR versions)
   src = pkgs.fetchurl (srcs."${key}" or unsupported);
 })
-
-
-# TODO TODO
-# https://github.com/cachix/devenv-nixpkgs/blob/rolling/pkgs/top-level/cuda-packages.nix
-# PASCAL is only supported by cudNN up to v9.11.1
-# so for PASCAL just using cudePackaged 12.6 is insufficient
