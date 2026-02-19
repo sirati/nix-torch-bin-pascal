@@ -1,4 +1,26 @@
-{ pkgs ? import <nixpkgs> {} }:
+# Retry wrappers for compilation tools
+#
+# This module provides retry wrappers for various compilation and build tools
+# to handle sporadic build failures. Each wrapper will retry failed commands
+# up to a configurable number of times (default: 3).
+#
+# Wrapped tools:
+#   - Build: ninja
+#   - GCC: gcc, g++, cc, c++, cc1, cc1plus
+#   - CUDA: nvcc, cicc, cudafe++, ptxas, fatbinary, nvlink
+#
+# Usage:
+#   let
+#     retryWrappers = import ./nix-retry-wrapper { inherit pkgs; };
+#     wrappers = retryWrappers.makeAllRetryWrappers cudaPackages { maxAttempts = 3; };
+#   in
+#   # Add wrappers to PATH or nativeBuildInputs
+#   buildInputs = [ wrappers ];
+#
+# The wrappers use the same names as the original binaries, so they replace
+# them when added to PATH during builds.
+
+{ pkgs ? import <nixpkgs> {}, gcc ? pkgs.gcc }:
 
 let
   # Generic retry wrapper that works for any command
@@ -47,13 +69,13 @@ in
 
   makeGccRetry = { maxAttempts ? 3 }: makeRetryWrapper {
     name = "gcc";
-    binaryPath = "${pkgs.gcc}/bin/gcc";
+    binaryPath = "${gcc}/bin/gcc";
     inherit maxAttempts;
   };
 
   makeGxxRetry = { maxAttempts ? 3 }: makeRetryWrapper {
     name = "g++";
-    binaryPath = "${pkgs.gcc}/bin/g++";
+    binaryPath = "${gcc}/bin/g++";
     inherit maxAttempts;
   };
 
@@ -65,13 +87,56 @@ in
 
   makeCcRetry = { maxAttempts ? 3 }: makeRetryWrapper {
     name = "cc";
-    binaryPath = "${pkgs.gcc}/bin/cc";
+    binaryPath = "${gcc}/bin/cc";
     inherit maxAttempts;
   };
 
   makeCxxRetry = { maxAttempts ? 3 }: makeRetryWrapper {
     name = "c++";
-    binaryPath = "${pkgs.gcc}/bin/c++";
+    binaryPath = "${gcc}/bin/c++";
+    inherit maxAttempts;
+  };
+
+  makeCc1Retry = { maxAttempts ? 3 }: makeRetryWrapper {
+    name = "cc1";
+    binaryPath = "${gcc}/libexec/gcc/x86_64-unknown-linux-gnu/${gcc.version}/cc1";
+    inherit maxAttempts;
+  };
+
+  makeCc1plusRetry = { maxAttempts ? 3 }: makeRetryWrapper {
+    name = "cc1plus";
+    binaryPath = "${gcc}/libexec/gcc/x86_64-unknown-linux-gnu/${gcc.version}/cc1plus";
+    inherit maxAttempts;
+  };
+
+  # CUDA compilation tools
+  makeCiccRetry = cudaPackages: { maxAttempts ? 3 }: makeRetryWrapper {
+    name = "cicc";
+    binaryPath = "${cudaPackages.cuda_nvcc}/nvvm/bin/cicc";
+    inherit maxAttempts;
+  };
+
+  makeCudafePlusPlusRetry = cudaPackages: { maxAttempts ? 3 }: makeRetryWrapper {
+    name = "cudafe++";
+    binaryPath = "${cudaPackages.cuda_nvcc}/bin/cudafe++";
+    inherit maxAttempts;
+  };
+
+  makePtxasRetry = cudaPackages: { maxAttempts ? 3 }: makeRetryWrapper {
+    name = "ptxas";
+    binaryPath = "${cudaPackages.cuda_nvcc}/bin/ptxas";
+    inherit maxAttempts;
+  };
+
+  makeFatbinaryRetry = cudaPackages: { maxAttempts ? 3 }: makeRetryWrapper {
+    name = "fatbinary";
+    binaryPath = "${cudaPackages.cuda_nvcc}/bin/fatbinary";
+    inherit maxAttempts;
+  };
+
+  makeNvlinkRetry = cudaPackages: { maxAttempts ? 3 }: makeRetryWrapper {
+    name = "nvlink";
+    binaryPath = "${cudaPackages.cuda_nvcc}/bin/nvlink";
     inherit maxAttempts;
   };
 
@@ -80,34 +145,72 @@ in
   makeAllRetryWrappers = cudaPackages: { maxAttempts ? 3 }:
     let
       wrappers = [
+        # Build tools
         (makeRetryWrapper {
           name = "ninja";
           binaryPath = "${pkgs.ninja}/bin/ninja";
           inherit maxAttempts;
         })
+        # GCC/G++ compilers
         (makeRetryWrapper {
           name = "gcc";
-          binaryPath = "${pkgs.gcc}/bin/gcc";
+          binaryPath = "${gcc}/bin/gcc";
           inherit maxAttempts;
         })
         (makeRetryWrapper {
           name = "g++";
-          binaryPath = "${pkgs.gcc}/bin/g++";
+          binaryPath = "${gcc}/bin/g++";
           inherit maxAttempts;
         })
         (makeRetryWrapper {
           name = "cc";
-          binaryPath = "${pkgs.gcc}/bin/cc";
+          binaryPath = "${gcc}/bin/cc";
           inherit maxAttempts;
         })
         (makeRetryWrapper {
           name = "c++";
-          binaryPath = "${pkgs.gcc}/bin/c++";
+          binaryPath = "${gcc}/bin/c++";
           inherit maxAttempts;
         })
         (makeRetryWrapper {
+          name = "cc1";
+          binaryPath = "${gcc}/libexec/gcc/x86_64-unknown-linux-gnu/${gcc.version}/cc1";
+          inherit maxAttempts;
+        })
+        (makeRetryWrapper {
+          name = "cc1plus";
+          binaryPath = "${gcc}/libexec/gcc/x86_64-unknown-linux-gnu/${gcc.version}/cc1plus";
+          inherit maxAttempts;
+        })
+        # NVIDIA CUDA compilers
+        (makeRetryWrapper {
           name = "nvcc";
           binaryPath = "${cudaPackages.cuda_nvcc}/bin/nvcc";
+          inherit maxAttempts;
+        })
+        (makeRetryWrapper {
+          name = "cicc";
+          binaryPath = "${cudaPackages.cuda_nvcc}/nvvm/bin/cicc";
+          inherit maxAttempts;
+        })
+        (makeRetryWrapper {
+          name = "cudafe++";
+          binaryPath = "${cudaPackages.cuda_nvcc}/bin/cudafe++";
+          inherit maxAttempts;
+        })
+        (makeRetryWrapper {
+          name = "ptxas";
+          binaryPath = "${cudaPackages.cuda_nvcc}/bin/ptxas";
+          inherit maxAttempts;
+        })
+        (makeRetryWrapper {
+          name = "fatbinary";
+          binaryPath = "${cudaPackages.cuda_nvcc}/bin/fatbinary";
+          inherit maxAttempts;
+        })
+        (makeRetryWrapper {
+          name = "nvlink";
+          binaryPath = "${cudaPackages.cuda_nvcc}/bin/nvlink";
           inherit maxAttempts;
         })
       ];

@@ -24,19 +24,48 @@
           # Import retry wrapper utilities
           retryWrappers = import ./nix-retry-wrapper { inherit pkgs; };
 
-          # Create Pascal-specific CUDA packages
-          cudaPackages_12_6_pascal = import ./torch-bin-cu126/cuda-packages-pascal.nix {
+          # Create a pkgs variant with GCC 13 for CUDA packages
+          pkgsWithGcc13 = pkgs // {
+            stdenv = pkgs.overrideCC pkgs.stdenv pkgs.gcc13;
+          };
+
+          # Create Pascal-specific CUDA packages (base, without wrappers yet)
+          cudaPackages_12_6_pascal_base = import ./torch-bin-cu126/cuda-packages-pascal.nix {
             inherit pkgs;
           };
 
-          # Create retry wrapper packages
-          allRetryWrappers = retryWrappers.makeAllRetryWrappers pkgs.cudaPackages_12_6 {
+          # Create retry wrapper packages with GCC 13
+          retryWrappersGcc13 = import ./nix-retry-wrapper {
+            inherit pkgs;
+            gcc = pkgs.gcc13;
+          };
+
+          allRetryWrappers = retryWrappersGcc13.makeAllRetryWrappers pkgs.cudaPackages_12_6 {
             maxAttempts = 3;
           };
 
-          allRetryWrappersPascal = retryWrappers.makeAllRetryWrappers cudaPackages_12_6_pascal {
+          allRetryWrappersPascal = retryWrappersGcc13.makeAllRetryWrappers cudaPackages_12_6_pascal_base {
             maxAttempts = 3;
           };
+
+          # Wrap CUDA packages to inject retry wrappers into compiling dependencies
+          wrapCudaPackagesWithRetry = import ./nix-retry-wrapper/wrap-cuda-packages.nix;
+
+          # Use GCC 13 (max supported by CUDA 12.6) for CUDA packages only
+          cudaPackages_12_6_wrapped = wrapCudaPackagesWithRetry {
+            pkgs = pkgsWithGcc13;
+            cudaPackages = pkgs.cudaPackages_12_6;
+            retryWrappers = allRetryWrappers;
+          };
+
+          cudaPackages_12_6_pascal = wrapCudaPackagesWithRetry {
+            pkgs = pkgsWithGcc13;
+            cudaPackages = cudaPackages_12_6_pascal_base;
+            retryWrappers = allRetryWrappersPascal;
+          };
+
+          # Import test suite
+          tests = import ./test-retry-wrappers.nix { inherit pkgs; };
 
           # Override stdenv to always use retry wrappers
           makeStdenvWithRetry = cudaPackages: wrappers:
@@ -109,7 +138,7 @@
               # Regular CUDA 12.6 with retry wrappers
               torchCuda126 = makeTorchWithRetry {
                 inherit python;
-                cudaPackages = pkgs.cudaPackages_12_6;
+                cudaPackages = cudaPackages_12_6_wrapped;
                 wrappers = allRetryWrappers;
               };
 
@@ -134,7 +163,7 @@
           ) {} (builtins.attrNames pythonVersions);
 
         in
-        torchPackages // {
+        torchPackages // tests // {
           # Default packages
           default = torchPackages."python313-torch-cu126";
 
@@ -143,7 +172,7 @@
           retry-wrappers-pascal = allRetryWrappersPascal;
 
           # CUDA toolkits
-          cuda-toolkit-12-6 = pkgs.cudaPackages_12_6.cudatoolkit;
+          cuda-toolkit-12-6 = cudaPackages_12_6_wrapped.cudatoolkit;
           cuda-toolkit-12-6-pascal = cudaPackages_12_6_pascal.cudatoolkit;
 
 
@@ -189,6 +218,54 @@
           )
         ];
       };
+
+      # Apps for running tests
+      apps = forAllSystems ({ system, pkgs }:
+        let
+          # Test script (inline to avoid path issues)
+          testScriptContent = builtins.readFile ./test-torch.py;
+
+          # Create test app using Python environment (includes all dependencies)
+          makeTestApp = pythonEnv: name: {
+            type = "app";
+            program = toString (pkgs.writeShellScript "test-torch-${name}" ''
+              exec ${pythonEnv}/bin/python3 - <<'EOFPYTHON'
+              ${testScriptContent}
+              EOFPYTHON
+            '');
+          };
+
+          # Generate test apps for all Python versions and variants
+          makeTestApps = pyVer:
+            let
+              pythonEnvPascal = self.packages.${system}."python${pyVer}-torch-cu126-pascal";
+              pythonEnvRegular = self.packages.${system}."python${pyVer}-torch-cu126";
+            in {
+              "test-torch-pascal-py${pyVer}" = makeTestApp pythonEnvPascal "pascal-py${pyVer}";
+              "test-torch-py${pyVer}" = makeTestApp pythonEnvRegular "py${pyVer}";
+            };
+
+          # Combine all test apps for Python 3.11, 3.12, 3.13
+          allTestApps = pkgs.lib.foldl' (acc: pyVer: acc // (makeTestApps pyVer)) {}
+            [ "311" "312" "313" ];
+
+        in
+        allTestApps // {
+          # Default to Pascal variant with Python 3.13
+          default = makeTestApp
+            self.packages.${system}.python313-torch-cu126-pascal
+            "default";
+
+          # Convenience aliases
+          test-torch-pascal = makeTestApp
+            self.packages.${system}.python313-torch-cu126-pascal
+            "pascal";
+
+          test-torch = makeTestApp
+            self.packages.${system}.python313-torch-cu126
+            "regular";
+        }
+      );
 
       # NixOS modules for system-wide integration
       nixosModules.default = { config, lib, pkgs, ... }: {
