@@ -16,15 +16,19 @@ A Nix flake providing PyTorch binary packages with CUDA 12.6 support, including 
 ### Test PyTorch Installation
 
 ```bash
-# Test with Pascal-compatible variant (Python 3.13)
+# Test with Pascal-compatible variant (Python 3.13, PyTorch 2.10.0)
 nix run github:sirati/nix-torch-bin-pascal#test-torch-pascal
 
-# Test with regular variant
+# Test with regular variant (Python 3.13, PyTorch 2.10.0)
 nix run github:sirati/nix-torch-bin-pascal#test-torch
 
 # Test with specific Python version
 nix run github:sirati/nix-torch-bin-pascal#test-torch-pascal-py311
 nix run github:sirati/nix-torch-bin-pascal#test-torch-py312
+
+# Test with specific PyTorch version (2.9.1)
+nix run github:sirati/nix-torch-bin-pascal#test-torch-pascal-v209
+nix run github:sirati/nix-torch-bin-pascal#test-torch-pascal-py312-v209
 ```
 
 ### Use in Your Flake
@@ -46,19 +50,31 @@ nix run github:sirati/nix-torch-bin-pascal#test-torch-py312
 
 ### PyTorch Binary Packages
 
-All packages are available for Python 3.11, 3.12, and 3.13.
+All packages are available for Python 3.11, 3.12, and 3.13, with both PyTorch 2.9.1 and 2.10.0.
 
 #### Regular CUDA 12.6 (cuDNN 9.13.0)
 
-- `torch-bin-cu126-py311` - PyTorch for Python 3.11
-- `torch-bin-cu126-py312` - PyTorch for Python 3.12
-- `torch-bin-cu126-py313` - PyTorch for Python 3.13
+Default (PyTorch 2.10.0):
+- `torch-bin-cu126-py311` - PyTorch 2.10.0 for Python 3.11
+- `torch-bin-cu126-py312` - PyTorch 2.10.0 for Python 3.12
+- `torch-bin-cu126-py313` - PyTorch 2.10.0 for Python 3.13
+
+With version suffix:
+- `torch-bin-cu126-py311-v209` - PyTorch 2.9.1 for Python 3.11
+- `torch-bin-cu126-py311-v210` - PyTorch 2.10.0 for Python 3.11
+- (Similar for py312, py313)
 
 #### Pascal-Compatible (cuDNN 9.10.2)
 
-- `torch-bin-cu126-pascal-py311` - PyTorch for Python 3.11
-- `torch-bin-cu126-pascal-py312` - PyTorch for Python 3.12
-- `torch-bin-cu126-pascal-py313` - PyTorch for Python 3.13
+Default (PyTorch 2.10.0):
+- `torch-bin-cu126-pascal-py311` - PyTorch 2.10.0 for Python 3.11
+- `torch-bin-cu126-pascal-py312` - PyTorch 2.10.0 for Python 3.12
+- `torch-bin-cu126-pascal-py313` - PyTorch 2.10.0 for Python 3.13
+
+With version suffix:
+- `torch-bin-cu126-pascal-py311-v209` - PyTorch 2.9.1 for Python 3.11
+- `torch-bin-cu126-pascal-py311-v210` - PyTorch 2.10.0 for Python 3.11
+- (Similar for py312, py313)
 
 ### Python Environments
 
@@ -66,15 +82,27 @@ Complete Python environments with PyTorch and dependencies:
 
 #### Regular CUDA 12.6
 
+Default (PyTorch 2.10.0):
 - `python311-torch-cu126`
 - `python312-torch-cu126`
 - `python313-torch-cu126` (default)
 
+With version suffix:
+- `python311-torch-cu126-v209` - Python 3.11 with PyTorch 2.9.1
+- `python313-torch-cu126-v210` - Python 3.13 with PyTorch 2.10.0
+- (Similar for other combinations)
+
 #### Pascal-Compatible
 
+Default (PyTorch 2.10.0):
 - `python311-torch-cu126-pascal`
 - `python312-torch-cu126-pascal`
 - `python313-torch-cu126-pascal`
+
+With version suffix:
+- `python311-torch-cu126-pascal-v209` - Python 3.11 with PyTorch 2.9.1
+- `python313-torch-cu126-pascal-v210` - Python 3.13 with PyTorch 2.10.0
+- (Similar for other combinations)
 
 ### Additional Packages
 
@@ -205,12 +233,19 @@ For GTX 10-series and other Pascal GPUs, use the `-pascal` variant packages. See
 ## Package Naming Scheme
 
 ```
-torch-bin-cu126-[pascal-]py{VERSION}
+torch-bin-cu126-[pascal-]py{PYVER}[-{TORCHVER}]
+python{PYVER}-torch-cu126[-pascal][-{TORCHVER}]
 ```
 
 - `cu126` = CUDA 12.6
 - `pascal` = Pascal-compatible variant (optional)
 - `py311/py312/py313` = Python version
+- `v209/v210` = PyTorch version (optional, defaults to v210)
+
+Examples:
+- `torch-bin-cu126-py313` = Python 3.13 with PyTorch 2.10.0 (regular)
+- `torch-bin-cu126-pascal-py311-v209` = Python 3.11 with PyTorch 2.9.1 (Pascal)
+- `python312-torch-cu126-pascal` = Python 3.12 environment with PyTorch 2.10.0 (Pascal)
 
 ## Building Locally
 

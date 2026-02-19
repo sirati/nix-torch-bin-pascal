@@ -40,6 +40,9 @@ in
 (pkgs.python3Packages.torch-bin.override {
   cudaPackages = cudaPackages;
 }).overrideAttrs (old: {
+  # Override version to match the requested torch version
+  version = torchVersion;
+
   # Then override the source to use the CUDA 12.6 wheel
   # Note: The same binary wheel works for both regular and Pascal variants
   # The difference is only in the CUDA runtime libraries (cuDNN, cuTENSOR versions)

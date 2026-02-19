@@ -22,3 +22,6 @@ https://developer.download.nvidia.com/compute/cutensor/redist/redistrib_2.1.0.js
 
 
 cude 12.6 only supports older versions of GCC namely up to v13
+
+# here is the torch-bin defined that we are overlaying
+https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/python-modules/torch/bin/default.nix
