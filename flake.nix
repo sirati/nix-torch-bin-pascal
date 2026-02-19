@@ -100,7 +100,7 @@
           };
 
           # Helper to build torch with retry wrappers injected into PATH
-          makeTorchWithRetry = { python, cudaPackages, wrappers }:
+          makeTorchWithRetry = { python, cudaPackages, wrappers, torchVersion ? "2.10.0" }:
             let
               # Create a wrapped pkgs that injects retry wrappers
               wrappedPkgs = pkgs // {

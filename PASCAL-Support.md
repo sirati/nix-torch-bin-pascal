@@ -65,7 +65,6 @@ These manifests are stored in `torch-bin-cu126/manifests/` and are used by our c
 
 ### Version Compatibility Matrix
 
-
 | Component | Regular Build | Pascal Build | Notes |
 |-----------|--------------|--------------|-------|
 | CUDA Toolkit | 12.6 | 12.6 | Same for both |
@@ -74,9 +73,7 @@ These manifests are stored in `torch-bin-cu126/manifests/` and are used by our c
 | PyTorch | 2.9.1/2.10.0 | 2.9.1/2.10.0 | Same for both |
 | Compute Capability | 7.0+ | 6.0-6.1 | Pascal is 6.x |
 
-## Usage
-
-### Determining if You Need Pascal Support
+## Determining if You Need Pascal Support
 
 Check your GPU's compute capability:
 
@@ -89,17 +86,6 @@ nvidia-smi --query-gpu=compute_cap --format=csv,noheader
 - If the output is `5.x` untested
 - If the output is `4.x` or lower → Generally unsupported nothing I can do
 
-### Using Pascal Packages
-
-```bash
-# Test Pascal variant
-nix run .#test-torch-pascal
-
-# Build specific package
-nix build .#torch-bin-cu126-pascal-py313
-```
-
-
 ## Troubleshooting
 
 ### "RuntimeError: CUDA error: no kernel image is available"
@@ -109,13 +95,3 @@ This usually means you're using the regular (non-Pascal) packages with a Pascal 
 ### "CUDNN_STATUS_ARCH_MISMATCH"
 
 This indicates a cuDNN version mismatch. Verify you're using the Pascal variant which includes cuDNN 9.10.2.
-
-
-## Contributing
-
-If you find issues with Pascal support or have improvements:
-
-1. Test thoroughly on actual Pascal hardware
-2. Verify all Python versions (3.11, 3.12, 3.13)
-3. Run `nix flake check` before submitting
-4. Document any version changes in manifests

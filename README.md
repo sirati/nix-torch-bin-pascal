@@ -5,7 +5,7 @@ A Nix flake providing PyTorch binary packages with CUDA 12.6 support, including 
 ## Features
 
 - **CUDA 12.6 Support**: Latest CUDA toolkit with PyTorch 2.9.1 and 2.10.0
-- **Pascal GPU Support**: Special builds with cuDNN 9.10.2 for NVIDIA Pascal architecture (GTX 10-series, etc.)
+- **Pascal GPU Support**: Special builds with cuDNN 9.10.2 for NVIDIA Pascal architecture (see [PASCAL-Support.md](PASCAL-Support.md))
 - **Multiple Python Versions**: Support for Python 3.11, 3.12, and 3.13
 - **Ready-to-Use**: Pre-built binary packages with all dependencies
 - **Overlay Support**: Easy integration with existing Nix flakes
@@ -17,14 +17,14 @@ A Nix flake providing PyTorch binary packages with CUDA 12.6 support, including 
 
 ```bash
 # Test with Pascal-compatible variant (Python 3.13)
-nix run github:YOUR_USERNAME/YOUR_REPO#test-torch-pascal
+nix run github:sirati/nix-torch-bin-pascal#test-torch-pascal
 
 # Test with regular variant
-nix run github:YOUR_USERNAME/YOUR_REPO#test-torch
+nix run github:sirati/nix-torch-bin-pascal#test-torch
 
 # Test with specific Python version
-nix run github:YOUR_USERNAME/YOUR_REPO#test-torch-pascal-py311
-nix run github:YOUR_USERNAME/YOUR_REPO#test-torch-py312
+nix run github:sirati/nix-torch-bin-pascal#test-torch-pascal-py311
+nix run github:sirati/nix-torch-bin-pascal#test-torch-py312
 ```
 
 ### Use in Your Flake
@@ -33,7 +33,7 @@ nix run github:YOUR_USERNAME/YOUR_REPO#test-torch-py312
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    torch-cu126.url = "github:YOUR_USERNAME/YOUR_REPO";
+    torch-cu126.url = "github:sirati/nix-torch-bin-pascal";
   };
 
   outputs = { self, nixpkgs, torch-cu126 }: {
@@ -55,8 +55,6 @@ All packages are available for Python 3.11, 3.12, and 3.13.
 - `torch-bin-cu126-py313` - PyTorch for Python 3.13
 
 #### Pascal-Compatible (cuDNN 9.10.2)
-
-For NVIDIA Pascal GPUs (GTX 1050/1060/1070/1080/1080Ti, Titan X/Xp, etc.):
 
 - `torch-bin-cu126-pascal-py311` - PyTorch for Python 3.11
 - `torch-bin-cu126-pascal-py312` - PyTorch for Python 3.12
@@ -91,7 +89,7 @@ Complete Python environments with PyTorch and dependencies:
 
 ```bash
 # Enter a shell with PyTorch
-nix shell github:YOUR_USERNAME/YOUR_REPO#python313-torch-cu126-pascal
+nix shell github:sirati/nix-torch-bin-pascal#python313-torch-cu126-pascal
 
 # Now you can use Python with PyTorch
 python3 -c "import torch; print(torch.cuda.is_available())"
@@ -105,7 +103,7 @@ Create a `flake.nix` for your project:
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    torch-cu126.url = "github:YOUR_USERNAME/YOUR_REPO";
+    torch-cu126.url = "github:sirati/nix-torch-bin-pascal";
   };
 
   outputs = { self, nixpkgs, torch-cu126 }:
@@ -132,7 +130,7 @@ Create a `flake.nix` for your project:
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    torch-cu126.url = "github:YOUR_USERNAME/YOUR_REPO";
+    torch-cu126.url = "github:sirati/nix-torch-bin-pascal";
   };
 
   outputs = { self, nixpkgs, torch-cu126 }:
@@ -191,66 +189,40 @@ In your NixOS configuration:
 }
 ```
 
+## Pascal GPU Support
 
-### Supported Pascal GPUs
-
-- GeForce GTX 1050, 1050 Ti
-- GeForce GTX 1060, 1070, 1080, 1080 Ti
-- GeForce GT 1030
-- Titan X (Pascal)
-- Titan Xp
-- Tesla P4, P40, P100
-- Quadro P-series
-
-See `pascal.md` for technical details.
+For GTX 10-series and other Pascal GPUs, use the `-pascal` variant packages. See [PASCAL-Support.md](PASCAL-Support.md) for technical details.
 
 ## System Requirements
 
 - **OS**: Linux (x86_64)
 - **Nix**: Flakes enabled
 - **GPU**: NVIDIA GPU with CUDA support
-  - Regular packages: Compute capability 7.0+ (Volta, Turing, Ampere, Ada, Hopper)
-  - Pascal packages: Compute capability 6.0-6.2
+  - Regular packages: Compute capability 7.0+
+  - Pascal packages: Compute capability 6.0-6.1
 - **CUDA Driver**: Compatible with CUDA 12.6 (driver version ≥ 525.60.13)
 
 ## Package Naming Scheme
 
 ```
-torch-bin-cu126-[variant-]py{VERSION}
+torch-bin-cu126-[pascal-]py{VERSION}
 ```
 
 - `cu126` = CUDA 12.6
 - `pascal` = Pascal-compatible variant (optional)
 - `py311/py312/py313` = Python version
 
-```
-python{VERSION}-torch-cu126[-pascal]
-```
-
-Complete Python environment with the corresponding PyTorch package.
-
 ## Building Locally
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git
-cd YOUR_REPO
+git clone https://github.com/sirati/nix-torch-bin-pascal.git
+cd nix-torch-bin-pascal
 
 # Build a specific package
 nix build .#torch-bin-cu126-pascal-py313
 
 # Run tests
-nix run .#test-torch-pascal
-
-# Enter development shell
-nix develop
-```
-
-## Testing
-
-The flake includes rudamentary test scripts:
-
-```bash
 nix run .#test-torch-pascal
 ```
 
@@ -261,11 +233,6 @@ nix run .#test-torch-pascal
 1. Check that your GPU is detected: `nvidia-smi`
 2. Verify CUDA driver version: `nvidia-smi` (should be ≥ 525.60.13)
 3. Ensure you're using the correct variant (Pascal vs regular)
-
-### "Unsupported GPU architecture"
-
-- For Pascal GPUs (GTX 10-series): Use the `pascal` variant packages
-- For older GPUs (Maxwell, Kepler): Not supported with CUDA 12.6
 
 ### Build Failures
 
@@ -280,11 +247,10 @@ The flake includes retry wrappers to handle intermittent build failures. If buil
 Contributions are welcome! Please:
 
 1. Test your changes with both variants (regular and Pascal)
-2. Verify all Python versions (3.11, 3.12, 3.13, 3.14)
+2. Verify all Python versions (3.11, 3.12, 3.13)
 3. Run `nix flake check` before submitting
 4. Update documentation as needed
 
 ## License
 
 MIT
-
