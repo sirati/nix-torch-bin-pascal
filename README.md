@@ -1,16 +1,15 @@
 # PyTorch with CUDA 12.6 for Nix
 
 A Nix flake providing PyTorch binary packages with CUDA 12.6 support, including special Pascal GPU compatibility variants.
+Importantly because on my system python and especially torch related python packages builds fail sporadically, I am using some wrappers to just retry failed build steps 2 more times. If the build really is broken, this means it will take 3x the time to properly fail. However, for me it is most important that I do not have to win the lottery to actually get a build that succeeds.
 
 ## Features
 
 - **CUDA 12.6 Support**: Latest CUDA toolkit with PyTorch 2.9.1 and 2.10.0
 - **Pascal GPU Support**: Special builds with cuDNN 9.10.2 for NVIDIA Pascal architecture (see [PASCAL-Support.md](PASCAL-Support.md))
-- **Multiple Python Versions**: Support for Python 3.11, 3.12, and 3.13
-- **Ready-to-Use**: Pre-built binary packages with all dependencies
+- **Multiple Python Versions**: Support for Python 3.11, 3.12, 3.13, and 3.14
 - **Overlay Support**: Easy integration with existing Nix flakes
-- **NixOS Module**: System-wide integration option
-
+- 
 ## Quick Start
 
 ### Test PyTorch Installation
@@ -50,7 +49,7 @@ nix run github:sirati/nix-torch-bin-pascal#test-torch-pascal-py312-v209
 
 ### PyTorch Binary Packages
 
-All packages are available for Python 3.11, 3.12, and 3.13, with both PyTorch 2.9.1 and 2.10.0.
+All packages are available for Python 3.11, 3.12, 3.13, and 3.14, with both PyTorch 2.9.1 and 2.10.0.
 
 #### Regular CUDA 12.6 (cuDNN 9.13.0)
 
@@ -62,7 +61,7 @@ Default (PyTorch 2.10.0):
 With version suffix:
 - `torch-bin-cu126-py311-v209` - PyTorch 2.9.1 for Python 3.11
 - `torch-bin-cu126-py311-v210` - PyTorch 2.10.0 for Python 3.11
-- (Similar for py312, py313)
+- (Similar for py312, py313, py314)
 
 #### Pascal-Compatible (cuDNN 9.10.2)
 
@@ -74,7 +73,7 @@ Default (PyTorch 2.10.0):
 With version suffix:
 - `torch-bin-cu126-pascal-py311-v209` - PyTorch 2.9.1 for Python 3.11
 - `torch-bin-cu126-pascal-py311-v210` - PyTorch 2.10.0 for Python 3.11
-- (Similar for py312, py313)
+- (Similar for py312, py313, py314)
 
 ### Python Environments
 
@@ -86,6 +85,7 @@ Default (PyTorch 2.10.0):
 - `python311-torch-cu126`
 - `python312-torch-cu126`
 - `python313-torch-cu126` (default)
+- `python314-torch-cu126`
 
 With version suffix:
 - `python311-torch-cu126-v209` - Python 3.11 with PyTorch 2.9.1
@@ -98,6 +98,7 @@ Default (PyTorch 2.10.0):
 - `python311-torch-cu126-pascal`
 - `python312-torch-cu126-pascal`
 - `python313-torch-cu126-pascal`
+- `python314-torch-cu126-pascal`
 
 With version suffix:
 - `python311-torch-cu126-pascal-v209` - Python 3.11 with PyTorch 2.9.1
@@ -189,63 +190,10 @@ Create a `flake.nix` for your project:
 }
 ```
 
-### NixOS Module
-
-In your NixOS configuration:
-
-```nix
-{
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    torch-cu126.url = "github:sirati/nix-torch-bin-pascal";
-  };
-
-  outputs = { self, nixpkgs, torch-cu126 }: {
-    nixosConfigurations.your-hostname = nixpkgs.lib.nixosSystem {
-      system = "x86_64-linux";
-      modules = [
-        torch-cu126.nixosModules.default
-        {
-          programs.torch-cuda126 = {
-            enable = true;
-            usePascal = true;  # Set to false for newer GPUs
-          };
-        }
-      ];
-    };
-  };
-}
-```
 
 ## Pascal GPU Support
 
 For GTX 10-series and other Pascal GPUs, use the `-pascal` variant packages. See [PASCAL-Support.md](PASCAL-Support.md) for technical details.
-
-## System Requirements
-
-- **OS**: Linux (x86_64)
-- **Nix**: Flakes enabled
-- **GPU**: NVIDIA GPU with CUDA support
-  - Regular packages: Compute capability 7.0+
-  - Pascal packages: Compute capability 6.0-6.1
-- **CUDA Driver**: Compatible with CUDA 12.6 (driver version ≥ 525.60.13)
-
-## Package Naming Scheme
-
-```
-torch-bin-cu126-[pascal-]py{PYVER}[-{TORCHVER}]
-python{PYVER}-torch-cu126[-pascal][-{TORCHVER}]
-```
-
-- `cu126` = CUDA 12.6
-- `pascal` = Pascal-compatible variant (optional)
-- `py311/py312/py313` = Python version
-- `v209/v210` = PyTorch version (optional, defaults to v210)
-
-Examples:
-- `torch-bin-cu126-py313` = Python 3.13 with PyTorch 2.10.0 (regular)
-- `torch-bin-cu126-pascal-py311-v209` = Python 3.11 with PyTorch 2.9.1 (Pascal)
-- `python312-torch-cu126-pascal` = Python 3.12 environment with PyTorch 2.10.0 (Pascal)
 
 ## Building Locally
 
@@ -282,7 +230,7 @@ The flake includes retry wrappers to handle intermittent build failures. If buil
 Contributions are welcome! Please:
 
 1. Test your changes with both variants (regular and Pascal)
-2. Verify all Python versions (3.11, 3.12, 3.13)
+2. Verify all Python versions (3.11, 3.12, 3.13, 3.14)
 3. Run `nix flake check` before submitting
 4. Update documentation as needed
 

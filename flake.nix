@@ -9,6 +9,16 @@
     let
       systems = [ "x86_64-linux" ];
 
+      # Shared configuration for all package generations
+      sharedConfig = {
+        pythonVersions = [ "311" "312" "313" "314" ];
+        torchVersions = [
+          { version = "2.9.1"; suffix = "v209"; }
+          { version = "2.10.0"; suffix = "v210"; }
+        ];
+        defaultTorchVersion = "2.10.0";
+      };
+
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f {
         inherit system;
         pkgs = import nixpkgs {
@@ -93,11 +103,10 @@
           });
 
           # Configuration for all combinations
-          pythonVersions = [ "311" "312" "313" ];
-          torchVersions = [
-            { version = "2.9.1"; suffix = "v209"; }
-            { version = "2.10.0"; suffix = "v210"; }
-          ];
+          pythonVersions = sharedConfig.pythonVersions;
+          torchVersions = sharedConfig.torchVersions;
+          defaultTorchVersion = sharedConfig.defaultTorchVersion;
+
           cudaVariants = [
             { name = ""; cudaPackages = cudaPackages_12_6_wrapped; wrappers = allRetryWrappers; }
             { name = "pascal"; cudaPackages = cudaPackages_12_6_pascal; wrappers = allRetryWrappersPascal; }
@@ -107,6 +116,7 @@
             "311" = pkgs.python311;
             "312" = pkgs.python312;
             "313" = pkgs.python313;
+            "314" = pkgs.python314;
           };
 
           # Helper to build torch with retry wrappers injected into PATH
@@ -167,12 +177,12 @@
                         }
                       ) torchVersions;
 
-                      # Default packages (version 2.10.0)
+                      # Default packages (latest torch version)
                       defaultTorch = makeTorchWithRetry {
                         inherit python;
                         cudaPackages = variant.cudaPackages;
                         wrappers = variant.wrappers;
-                        torchVersion = "2.10.0";
+                        torchVersion = defaultTorchVersion;
                       };
                       defaultPythonEnv = python.withPackages (ps: [ defaultTorch ]);
                       defaultPackages = {
@@ -227,10 +237,8 @@
                 '';
               });
 
-            torchVersions = [
-              { version = "2.9.1"; suffix = "v209"; }
-              { version = "2.10.0"; suffix = "v210"; }
-            ];
+            torchVersions = sharedConfig.torchVersions;
+            defaultTorchVersion = sharedConfig.defaultTorchVersion;
 
             # Generate all overlay packages
             overlayPackages =
@@ -253,18 +261,18 @@
                   };
                 }) torchVersions;
 
-                # Default packages (2.10.0)
+                # Default packages (latest torch version)
                 defaultPackages = {
                   torch-bin-cu126 = makeTorchOverlay {
                     cudaPackages = final.cudaPackages_12_6;
                     inherit wrappers;
-                    torchVersion = "2.10.0";
+                    torchVersion = defaultTorchVersion;
                   };
 
                   torch-bin-cu126-pascal = makeTorchOverlay {
                     cudaPackages = cudaPackages_12_6_pascal;
                     wrappers = wrappersPascal;
-                    torchVersion = "2.10.0";
+                    torchVersion = defaultTorchVersion;
                   };
                 };
               in
@@ -289,11 +297,8 @@
             '');
           };
 
-          pythonVersions = [ "311" "312" "313" ];
-          torchVersions = [
-            { version = "2.9.1"; suffix = "v209"; }
-            { version = "2.10.0"; suffix = "v210"; }
-          ];
+          pythonVersions = sharedConfig.pythonVersions;
+          torchVersions = sharedConfig.torchVersions;
 
           # Generate all test app combinations
           allTestApps =
