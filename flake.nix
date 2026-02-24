@@ -9,6 +9,9 @@
     let
       systems = [ "x86_64-linux" ];
 
+      # Import develop.nix
+      developModule = import ./develop.nix;
+
       # Shared configuration for all package generations
       sharedConfig = {
         pythonVersions = [ "311" "312" "313" "314" ];
@@ -378,5 +381,22 @@
           ];
         };
       };
+
+      # Development shells
+      devShells = nixpkgs.lib.genAttrs systems (system:
+        let
+          pkgs = import nixpkgs {
+            inherit system;
+          };
+          develop = developModule { inherit pkgs; };
+        in
+        {
+          default = develop.makeShell {
+            pascal = false;
+            deploymentPythonPackages = _pascal: _python-pkgs: [];
+            deploymentPackages = [];
+          };
+        }
+      );
     };
 }
