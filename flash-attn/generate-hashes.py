@@ -2,13 +2,13 @@
 #!nix-shell -i python3 -p python3 nix
 
 """
-Generate causal-conv1d-bin/binary-hashes.nix from a GitHub release tag.
+Generate flash-attn/binary-hashes.nix from a GitHub release tag.
 
 Run from the project root:
-  nix-shell causal-conv1d-bin/generate-hashes.py [-- --tag v1.6.0]
+  nix-shell flash-attn/generate-hashes.py [-- --tag v2.8.3]
 
 Options:
-  --tag TAG      GitHub release tag to fetch (default: v1.6.0)
+  --tag TAG      GitHub release tag to fetch (default: v2.8.3)
   --token TOKEN  GitHub API token; also read from $GITHUB_TOKEN
 """
 
@@ -28,19 +28,19 @@ from source_github import GithubReleasesSource
 # Package-specific configuration
 # ---------------------------------------------------------------------------
 
-REPO        = "Dao-AILab/causal-conv1d"
-DEFAULT_TAG = "v1.6.0"
+REPO        = "Dao-AILab/flash-attention"
+DEFAULT_TAG = "v2.8.3"
 OUTPUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "binary-hashes.nix")
 
 HEADER = """\
 # WARNING: Auto-generated file. Do not edit manually!
-# Source:  https://github.com/Dao-AILab/causal-conv1d/releases
-# To regenerate: nix-shell causal-conv1d-bin/generate-hashes.py [-- --tag v1.6.0]
+# Source:  https://github.com/Dao-AILab/flash-attention/releases
+# To regenerate: nix-shell flash-attn/generate-hashes.py [-- --tag v2.8.3]
 #
 # Structure: cudaVersion -> version -> torchCompat -> pyVer -> os -> arch
 #
-#   cudaVersion: CUDA major[minor] the wheel was compiled against (e.g. cu11, cu12, cu13).
-#   version:     causal-conv1d release version.
+#   cudaVersion: CUDA major[minor] the wheel was compiled against (e.g. cu12, cu126).
+#   version:     flash-attention release version.
 #   torchCompat: torch major.minor the wheel was compiled against.
 #   pyVer:       py39, py310, …  (CPython only; no free-threaded variants).
 #   os:          linux  (only Linux wheels provided as pre-built binaries)
@@ -63,18 +63,17 @@ SCHEMA = [
 
 DIMENSIONS = ["cudaVersion", "version", "torchCompat", "pyVer", "os", "arch"]
 
-# Matches causal_conv1d wheel filenames released on GitHub, e.g.:
-#   causal_conv1d-1.6.0+cu12torch2.7cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
-#   causal_conv1d-1.6.0+cu13torch25.11cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
-#   causal_conv1d-1.6.0+cu11torch2.6cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
+# Matches flash_attn wheel filenames released on GitHub, e.g.:
+#   flash_attn-2.8.3+cu12torch2.4cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+#   flash_attn-2.8.3+cu126torch2.7cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
 _WHEEL_RE = re.compile(
-    r"^causal_conv1d-"
-    r"(\d+\.\d+\.\d+)"                       # group 1: package version
-    r"\+cu(\d+)torch"                         # group 2: cuda version digits, e.g. "12" or "13"
-    r"(\d+\.\d+)"                             # group 3: torch compat, e.g. "2.7" or "25.11"
-    r"cxx11abi(TRUE|FALSE)"                   # group 4: CXX11 ABI flag
-    r"-(cp\d+)-cp\d+-"                        # group 5: CPython tag, e.g. "cp312"
-    r"(linux_x86_64|linux_aarch64)"           # group 6: platform tag
+    r"^flash_attn-"
+    r"(\d+\.\d+\.\d+)"                      # group 1: package version
+    r"\+cu(\d+)torch"                        # group 2: cuda version digits, e.g. "12" or "126"
+    r"(\d+\.\d+)"                            # group 3: torch compat, e.g. "2.4"
+    r"cxx11abi(TRUE|FALSE)"                  # group 4: CXX11 ABI flag
+    r"-(cp\d+)-cp\d+-"                       # group 5: CPython tag, e.g. "cp312"
+    r"(linux_x86_64|linux_aarch64)"          # group 6: platform tag
     r"\.whl$"
 )
 
@@ -107,7 +106,7 @@ def parse_wheel(entry):
     os_name, arch = os_arch
 
     pyver        = "py" + cpver[2:]       # "cp312" → "py312"
-    cuda_version = "cu" + cuda_digits     # "12" → "cu12", "13" → "cu13"
+    cuda_version = "cu" + cuda_digits     # "12" → "cu12", "126" → "cu126"
 
     key = (cuda_version, version, torch_compat, pyver, os_name, arch)
 
@@ -129,7 +128,7 @@ def parse_wheel(entry):
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Generate causal-conv1d-bin binary-hashes.nix from a GitHub release tag."
+        description="Generate flash-attn binary-hashes.nix from a GitHub release tag."
     )
     parser.add_argument(
         "--tag",

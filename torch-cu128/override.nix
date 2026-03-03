@@ -1,6 +1,6 @@
-# torch-bin override for CUDA 12.8 pre-built wheels.
+# torch override for CUDA 12.8 pre-built wheels.
 #
-# Delegates to the shared ../torch-bin/override-common.nix implementation,
+# Delegates to the shared ../torch/override-common.nix implementation,
 # supplying the cu128-specific binary-hashes as the wheel source.
 #
 # Arguments:
@@ -11,7 +11,7 @@
 
 { pkgs, cudaPackages, torchVersion ? "2.10.0" }:
 
-import ../torch-bin/override-common.nix {
+import ../torch/override-common.nix {
   inherit pkgs cudaPackages torchVersion;
   binaryHashes = import ./binary-hashes.nix;
 }

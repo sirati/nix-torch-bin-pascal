@@ -1,6 +1,6 @@
 # Generic torch-bin override for pre-built CUDA wheels.
 #
-# This is the shared implementation used by torch-bin-cu126 and torch-bin-cu128.
+# This is the shared implementation used by torch-cu126 and torch-cu128.
 # Each CUDA variant's override.nix calls this with its own binaryHashes set.
 #
 # Arguments:

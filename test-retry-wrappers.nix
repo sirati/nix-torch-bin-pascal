@@ -6,7 +6,7 @@
 let
   retryWrappers = import ./nix-retry-wrapper { inherit pkgs; };
 
-  cudaPackages_12_6_pascal = import ./torch-bin-cu126/cuda-packages-pascal.nix {
+  cudaPackages_12_6_pascal = import ./torch-cu126/cuda-packages-pascal.nix {
     inherit pkgs;
   };
 

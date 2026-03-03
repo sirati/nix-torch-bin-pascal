@@ -2,10 +2,10 @@
 #!nix-shell -i python3 -p python3 nix
 
 """
-Generate torch-bin-cu128/binary-hashes.nix from the PyTorch CUDA 12.8 wheel index.
+Generate torch-cu126/binary-hashes.nix from the PyTorch CUDA 12.6 wheel index.
 
 Run from the project root:
-  nix-shell torch-bin-cu128/generate-hashes.py
+  nix-shell torch-cu126/generate-hashes.py
 """
 
 import os
@@ -23,14 +23,14 @@ from source_torch import TorchWheelSource
 # Package-specific configuration
 # ---------------------------------------------------------------------------
 
-CUDA_VARIANT    = "cu128"
+CUDA_VARIANT    = "cu126"
 VERSION_FILTER  = r"2\.(?:9\.1|10\.0)"
 OUTPUT_PATH     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "binary-hashes.nix")
 
 HEADER = """\
 # WARNING: Auto-generated file. Do not edit manually!
-# Source:  https://download.pytorch.org/whl/cu128/torch/
-# To regenerate: nix-shell torch-bin-cu128/generate-hashes.py
+# Source:  https://download.pytorch.org/whl/cu126/torch/
+# To regenerate: nix-shell torch-cu126/generate-hashes.py
 #
 # Structure: version -> pythonVersion -> os -> arch
 #   pythonVersion: py310, py311, py312, py313, py313-freethreaded, py314, py314-freethreaded
@@ -50,6 +50,10 @@ DIMENSIONS = ["version", "pyVer", "os", "arch"]
 # ---------------------------------------------------------------------------
 # Wheel filename parser
 # ---------------------------------------------------------------------------
+
+# Matches the torch wheel href captured by TorchWheelSource, after it has
+# already extracted: version, abitag (e.g. "cp312" or "cp313t"), platform.
+# Here we further classify abitag and platform into the dimensions we need.
 
 def parse_wheel(entry) -> dict | None:
     """
@@ -80,7 +84,7 @@ def parse_wheel(entry) -> dict | None:
         return None
     os_name, arch = os_arch
 
-    is_ft  = abitag.endswith("t")
+    is_ft = abitag.endswith("t")
     pynum  = abitag[2:].rstrip("t")              # "cp312" → "312", "cp313t" → "313"
     py_key = f"py{pynum}-freethreaded" if is_ft else f"py{pynum}"
 
