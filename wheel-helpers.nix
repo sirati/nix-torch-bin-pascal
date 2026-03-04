@@ -131,7 +131,9 @@ in
           wheelLeaf.precx11abi;
 
       imports =
-        if pythonImportsCheck != null then pythonImportsCheck else [ pname ];
+        if pythonImportsCheck != null
+        then pythonImportsCheck
+        else [ (builtins.replaceStrings [ "-" ] [ "_" ] pname) ];
 
     in
     assert _assertLinux;

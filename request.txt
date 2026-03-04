@@ -8,4 +8,6 @@ as a last step before finishing a session, update the todo and your impl file to
 
 In order to make sure of the current way nixpkgs deals with python packages, please refer to the source linked in ./upstream-refs.md.
 
+never read files inside of /binary-hashes/ or /source-hashes/ directories. They do not contain any useful information and eat up context space.
+
 the ground trust of the goal is written in ./refactor_plan.md. The human also maintains a todo file for things that needs to be worked on: ./human-todo-notes.txt. do not modify these.

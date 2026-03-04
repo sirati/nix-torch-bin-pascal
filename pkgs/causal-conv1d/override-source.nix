@@ -47,20 +47,22 @@ pkgs.python3Packages.buildPythonPackage {
     inherit (srcInfo) rev hash;
   };
 
-  # Build-time Python dependencies.  torch is included here because setup.py
-  # imports it to locate the PyTorch extension headers and CUDA include paths.
+  # Build-time Python/tool dependencies — mirrors the upstream nixpkgs flash-attn
+  # pattern: cuda_nvcc goes in build-system alongside setuptools/ninja; torch is
+  # intentionally NOT here (only in dependencies below) so that pip does not
+  # attempt to resolve torch's transitive nvidia-* requirements during the wheel
+  # build step and fail because those packages are Nix-managed rather than
+  # pip-installed.
   build-system = [
     pkgs.python3Packages.setuptools
     pkgs.ninja
-    torch
+    cudaPackages.cuda_nvcc
   ];
 
   nativeBuildInputs = [
     pkgs.which
-    # cuda_nvcc provides the nvcc compiler and its companion tools (cicc,
-    # ptxas, fatbinary, cudafe++).  wrappers shadows these with retry-wrapped
-    # versions; put wrappers first in PATH via preConfigure/preBuild below.
-    cudaPackages.cuda_nvcc
+    # wrappers shadows nvcc/gcc with retry-wrapped versions; placed first in
+    # PATH via preConfigure/preBuild so it takes precedence.
     wrappers
   ];
 

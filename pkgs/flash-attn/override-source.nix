@@ -1,0 +1,104 @@
+# flash-attn source build derivation.
+#
+# Compiles flash-attention from source against the supplied torch derivation and
+# CUDA package set.  Mirrors upstream nixpkgs flash-attn/default.nix but
+# substitutes our custom torch binary wheel and receives cudaPackages directly
+# rather than inheriting it from torch passthru.
+#
+# Arguments:
+#   pkgs              - nixpkgs package set; pkgs.python3 must be the target
+#                       Python interpreter (set by concretise via pkgsForBuild)
+#   torch             - the concrete torch derivation from resolvedDeps."torch"
+#   cudaPackages      - CUDA package set (already configured for Pascal or
+#                       vanilla by concretise)
+#   wrappers          - retry-wrapper derivation (nvcc/gcc wrapped with retry
+#                       logic); injected at the front of PATH during compilation
+#   flashAttnVersion  - version string to build, e.g. "2.8.3"
+
+{ pkgs
+, torch
+, cudaPackages
+, flashAttnVersion
+}:
+
+let
+  inherit (pkgs) lib;
+  inherit (cudaPackages) backendStdenv;
+
+  srcInfo  = import (./source-hashes + "/v${flashAttnVersion}.nix");
+  srcOwner = srcInfo.owner or "Dao-AILab";
+  srcRepo  = srcInfo.repo  or "flash-attention";
+
+  # TORCH_CUDA_ARCH_LIST: semicolon-separated CUDA compute capabilities.
+  # Read from cudaPackages.flags.cudaCapabilities (nixpkgs CUDA infrastructure).
+  cudaCapabilities = cudaPackages.flags.cudaCapabilities;
+
+in
+pkgs.python3Packages.buildPythonPackage {
+  pname   = "flash-attention";
+  version = flashAttnVersion;
+  pyproject = true;
+
+  src = pkgs.fetchFromGitHub {
+    owner           = srcOwner;
+    repo            = srcRepo;
+    tag             = srcInfo.rev;
+    # hashWithSubmodules is the NAR hash of the repo including submodules
+    # (cutlass etc.).  Run `nix build` once with the placeholder below; the
+    # error output will contain the correct sha256 to paste into
+    # source-hashes/v{version}.nix as the `hashWithSubmodules` field.
+    hash            = srcInfo.hashWithSubmodules or "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    fetchSubmodules = true;
+  };
+
+  preConfigure = ''
+    export MAX_JOBS="$NIX_BUILD_CORES"
+    export NVCC_THREADS="$NIX_BUILD_CORES"
+  '';
+
+  env = {
+    FLASH_ATTENTION_SKIP_CUDA_BUILD = "FALSE";
+    CC  = "${backendStdenv.cc}/bin/cc";
+    CXX = "${backendStdenv.cc}/bin/c++";
+    TORCH_CUDA_ARCH_LIST = lib.concatStringsSep ";" cudaCapabilities;
+  };
+
+  build-system = [
+    pkgs.python3Packages.setuptools
+    pkgs.python3Packages.ninja
+    pkgs.python3Packages.psutil
+    cudaPackages.cuda_nvcc
+  ];
+
+  nativeBuildInputs = [
+    pkgs.which
+  ];
+
+  buildInputs = with cudaPackages; [
+    cuda_cccl    # <thrust/*> / <cub/*>
+    libcublas    # cublas_v2.h
+    libcurand    # curand.h
+    libcusolver  # cusolverDn.h
+    libcusparse  # cusparse.h
+    cuda_cudart  # cuda_runtime.h cuda_runtime_api.h
+  ];
+
+  dependencies = [
+    pkgs.python3Packages.einops
+    torch
+  ];
+
+  doCheck = false;
+
+  pythonImportsCheck = [ "flash_attn" ];
+
+  meta = {
+    description      = "Official implementation of FlashAttention and FlashAttention-2 (built from source)";
+    homepage         = "https://github.com/Dao-AILab/flash-attention/";
+    changelog        = "https://github.com/Dao-AILab/flash-attention/releases/tag/${srcInfo.rev}";
+    license          = lib.licenses.bsd3;
+    platforms        = [ "x86_64-linux" "aarch64-linux" ];
+    broken           = false;
+    sourceProvenance = with lib.sourceTypes; [ fromSource ];
+  };
+}

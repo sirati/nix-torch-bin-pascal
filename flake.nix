@@ -152,6 +152,35 @@
             allowBuildingFromSource = true;
           };
 
+          # ── Test: torch + flash-attn binary wheels, Python 3.13, CUDA 12.8 ─
+          # flash-attn 2.8.3 has py313 wheels for torch 2.8 on cu12.
+          testFlashAttnBinCu128Result = (import ./concretise) {
+            inherit pkgs;
+            packages = [
+              pytorchScope.torch
+              pytorchScope."flash-attn"
+            ];
+            python                  = "3.13";
+            cuda                    = "12.8";
+            torch                   = "2.8";
+            allowBuildingFromSource = false;
+          };
+
+          # ── Test: flash-attn from source, Python 3.13, CUDA 12.8 ───────────
+          # flash-attn 2.8.3 has no py313 wheel for torch >= 2.10, so a source
+          # build is required.  causal-conv1d is intentionally excluded here.
+          testFlashAttnSourceCu128Result = (import ./concretise) {
+            inherit pkgs;
+            packages = [
+              pytorchScope.torch
+              pytorchScope."flash-attn"
+            ];
+            python                  = "3.13";
+            cuda                    = "12.8";
+            torch                   = "2.10";
+            allowBuildingFromSource = true;
+          };
+
           # ── Test: all three packages, Python 3.13, CUDA 12.8 ───────────────
           # causal-conv1d requires a source build with torch 2.10.
           testAllCu128Result = (import ./concretise) {
@@ -191,6 +220,8 @@
             test-torch-py313-cu128                     = testTorchCu128Result.env;
             test-causal-conv1d-py313-cu128             = testCausalCu128Result.env;
             test-causal-conv1d-from-source-py313-cu128 = testCausalCu128FromSourceResult.env;
+            test-flash-attn-bin-py313-cu128            = testFlashAttnBinCu128Result.env;
+            test-flash-attn-source-py313-cu128         = testFlashAttnSourceCu128Result.env;
             test-all-py313-cu128                       = testAllCu128Result.env;
           };
 
@@ -207,6 +238,8 @@
             test-torch-py313-cu128                     = testTorchCu128Result.devShell;
             test-causal-conv1d-py313-cu128             = testCausalCu128Result.devShell;
             test-causal-conv1d-from-source-py313-cu128 = testCausalCu128FromSourceResult.devShell;
+            test-flash-attn-bin-py313-cu128            = testFlashAttnBinCu128Result.devShell;
+            test-flash-attn-source-py313-cu128         = testFlashAttnSourceCu128Result.devShell;
             test-all-py313-cu128                       = testAllCu128Result.devShell;
           };
         }

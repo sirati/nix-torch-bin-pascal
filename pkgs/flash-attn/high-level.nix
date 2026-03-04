@@ -33,6 +33,45 @@ assert hldHelpers.isHLD torch;
   # ── High-level dependencies ────────────────────────────────────────────────
   highLevelDeps = { inherit torch; };
 
+  # ── ABI compatibility check ────────────────────────────────────────────────
+  #
+  # Returns false when the pre-built wheel for `version` is unlikely to be
+  # ABI-compatible with the resolved torch.  We determine this by comparing
+  # the resolved torch major.minor against the highest torch-compat key present
+  # in the binary-hashes file (across all Python versions).  When torch is
+  # strictly newer than the highest compat key we have wheels for, we fall back
+  # to a source build.
+  #
+  # This ensures torch 2.10+ always triggers a source build, since the newest
+  # flash-attn pre-built wheels only cover up to torch 2.9 compat.
+  canBuildBin = { resolvedDeps, version, cudaLabel, ... }:
+    let
+      torchVersion    = resolvedDeps."torch".version;
+      mm              = builtins.match "([0-9]+[.][0-9]+).*" torchVersion;
+      torchMajorMinor = builtins.elemAt mm 0;
+
+      # Load the full binary-hashes file for this version.
+      # Prefer the exact cudaLabel, fall back to the generic "cu12" key.
+      versionFile = import (./binary-hashes + "/v${version}.nix");
+      cudaSection =
+        if      builtins.hasAttr cudaLabel versionFile then versionFile.${cudaLabel}
+        else if builtins.hasAttr "cu12"    versionFile then versionFile."cu12"
+        else {};
+
+      availableCompat = builtins.attrNames cudaSection;
+
+      sortedCompat = builtins.sort
+        (a: b: builtins.compareVersions a b < 0)
+        availableCompat;
+
+      maxCompat = if sortedCompat == []
+        then "0.0"
+        else builtins.elemAt sortedCompat (builtins.length sortedCompat - 1);
+    in
+    # Binary is compatible iff the resolved torch major.minor does not exceed
+    # the highest compat key we have a wheel for.
+    builtins.compareVersions torchMajorMinor maxCompat <= 0;
+
   # ── Build from pre-built wheel ─────────────────────────────────────────────
   #
   # Received from concretise:
@@ -50,6 +89,21 @@ assert hldHelpers.isHLD torch;
     };
 
   # ── Build from source ──────────────────────────────────────────────────────
+  #
+  # Called by concretise when canBuildBin returns false (torch is newer than
+  # the highest compat key in the binary-hashes file) and
+  # allowBuildingFromSource = true.
   buildSource = { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }:
-    throw "flash-attn/high-level.nix: buildSource is not yet implemented";
+    let
+      v = if version != null then version else throw (
+        "flash-attn buildSource: version is null — no binary-hashes entry "
+        + "exists for cudaLabel '${cudaLabel}'.  Add a source-hashes entry "
+        + "for the desired version."
+      );
+    in
+    import ./override-source.nix {
+      inherit pkgs cudaPackages;
+      torch            = resolvedDeps."torch";
+      flashAttnVersion = v;
+    };
 }
