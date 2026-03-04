@@ -1,5 +1,5 @@
 #!/usr/bin/env nix-shell
-#!nix-shell -i python3 -p python3 nix
+#!nix-shell -i python3 -p python3 nix nix-prefetch-github
 
 """
 Generate flash-attn binary-hashes from GitHub releases.
@@ -140,6 +140,7 @@ def main() -> None:
         BINARY_HASHES_DIR, SOURCE_HASHES_DIR,
         SCHEMA, DIMENSIONS, VERSION_SPEC, HEADER_TEMPLATE,
         _HERE, args,
+        with_submodules=True,
     )
 
 

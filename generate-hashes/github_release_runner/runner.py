@@ -7,7 +7,13 @@ from common.sort_keys import sort_version_key
 from nix_writer.schema import DimSpec
 from nix_writer.organise import organize_wheels
 from nix_writer.per_version import write_binary_hashes_per_version
-from source_fetcher import SourceEntry, fetch_github_source_hash, source_hash_exists, write_source_hash_file
+from source_fetcher import (
+    SourceEntry,
+    fetch_github_source_hash,
+    fetch_github_source_hash_with_submodules,
+    source_hash_exists,
+    write_source_hash_file,
+)
 
 
 def run_binary_hashes(
@@ -99,6 +105,7 @@ def run_source_hashes(
     source_hashes_dir: str,
     github_repo: str,
     args,
+    with_submodules: bool = False,
 ) -> None:
     """
     Fetch and write per-version ``source-hashes/v{version}.nix`` files.
@@ -118,6 +125,13 @@ def run_source_hashes(
         ``owner/name`` slug — split to derive *owner* and *repo*.
     args:
         Parsed arguments namespace.  ``args.skip_source`` is honoured.
+    with_submodules:
+        When ``True``, compute the hash via
+        :func:`~source_fetcher.fetch_github_source_hash_with_submodules`
+        (git clone + submodule init) instead of the default tarball fetch.
+        Use this for packages whose ``fetchFromGitHub`` sets
+        ``fetchSubmodules = true`` (e.g. flash-attn).  The resulting ``hash``
+        field in the ``.nix`` file is the submodule-aware NAR hash.
     """
     if getattr(args, "skip_source", False):
         print("\nSkipping source-hash generation (--skip-source).", file=sys.stderr)
@@ -137,7 +151,10 @@ def run_source_hashes(
 
         winning_tag = winning_tags[base_version]
         try:
-            sri_hash = fetch_github_source_hash(owner, repo, winning_tag)
+            if with_submodules:
+                sri_hash = fetch_github_source_hash_with_submodules(owner, repo, winning_tag)
+            else:
+                sri_hash = fetch_github_source_hash(owner, repo, winning_tag)
             write_source_hash_file(
                 source_hashes_dir,
                 SourceEntry(version=base_version, tag=winning_tag, hash=sri_hash),
@@ -162,6 +179,8 @@ def run_all_hashes(
     header_template: str,
     here: str,
     args,
+    *,
+    with_submodules: bool = False,
 ) -> None:
     """
     High-level entry point that runs the full hash-generation pipeline.
@@ -189,6 +208,10 @@ def run_all_hashes(
         :func:`~github_release_runner.missing_digests.write_missing_digests`.
     args:
         Parsed argument namespace from :func:`~github_release_runner.args.add_common_args`.
+    with_submodules:
+        Forwarded to :func:`run_source_hashes`.  Set to ``True`` for packages
+        whose ``fetchFromGitHub`` uses ``fetchSubmodules = true`` (e.g.
+        flash-attn).
     """
     from github_release_runner.tags import resolve_tags
     from github_release_runner.collector import collect_all_wheels
@@ -211,7 +234,7 @@ def run_all_hashes(
         # Do not touch missing-digests.txt here — we fetched no wheels so we
         # have no new information about missing digests.  Any existing file
         # from a previous binary run must be preserved as-is.
-        run_source_hashes(tags, source_hashes_dir, github_repo, args)
+        run_source_hashes(tags, source_hashes_dir, github_repo, args, with_submodules=with_submodules)
         return
 
     all_raw, missing_tags = collect_all_wheels(github_repo, tags, args.token, parse_wheel_fn)
@@ -219,4 +242,4 @@ def run_all_hashes(
     run_binary_hashes(all_raw, binary_hashes_dir, schema, dimensions, version_spec, header_template)
 
     if source_hashes_dir is not None:
-        run_source_hashes(tags, source_hashes_dir, github_repo, args)
+        run_source_hashes(tags, source_hashes_dir, github_repo, args, with_submodules=with_submodules)

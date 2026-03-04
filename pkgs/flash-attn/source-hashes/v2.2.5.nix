@@ -1,5 +1,0 @@
-# WARNING: Auto-generated file. Do not edit manually!
-{
-  rev  = "v2.2.5";
-  hash = "sha256-sgJNsokdEEXTTDEURhfx60WO4NnG9Ce0RmMCf+FWBZE=";
-}
