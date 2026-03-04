@@ -127,6 +127,37 @@
             pascal   = true;
           };
 
+          # ── Test: torch-only, Python 3.13, CUDA 12.8 ───────────────────────
+          testTorchCu128Result = (import ./concretise) {
+            inherit pkgs;
+            packages = [ pytorchScope.torch ];
+            python   = "3.13";
+            cuda     = "12.8";
+          };
+
+          # ── Test: torch + causal-conv1d, Python 3.13, CUDA 12.8 ────────────
+          testCausalCu128Result = (import ./concretise) {
+            inherit pkgs;
+            packages = [
+              pytorchScope.torch
+              pytorchScope."causal-conv1d"
+            ];
+            python   = "3.13";
+            cuda     = "12.8";
+          };
+
+          # ── Test: all three packages, Python 3.13, CUDA 12.8 ───────────────
+          testAllCu128Result = (import ./concretise) {
+            inherit pkgs;
+            packages = [
+              pytorchScope.torch
+              pytorchScope."flash-attn"
+              pytorchScope."causal-conv1d"
+            ];
+            python   = "3.13";
+            cuda     = "12.8";
+          };
+
         in
         tests // {
           default = defaultResult.env;
@@ -142,6 +173,11 @@
           cuda-toolkit-12-6-pascal  = cudaPackages_12_6_pascal.cudatoolkit;
           cuda-toolkit-12-8         = cudaPackages_12_8_wrapped.cudatoolkit;
           cuda-toolkit-12-8-pascal  = cudaPackages_12_8_pascal.cudatoolkit;
+
+          # Test environments – py313 + cu128
+          test-torch-py313-cu128         = testTorchCu128Result.env;
+          test-causal-conv1d-py313-cu128 = testCausalCu128Result.env;
+          test-all-py313-cu128           = testAllCu128Result.env;
         }
       );
 

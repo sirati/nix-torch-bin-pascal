@@ -4,4 +4,6 @@ always remove done work from the immediate todos.
 
 if there are no more immediate todos, continue working on ./refactor_impl.md and after finishing a session, update the immediate todos that were not completed during this session, but for which you have already done thinking and planning, so that this thinking effort is not lost.
 
-the ground trust of the goal is written in ./refactor_plan.md. do not modify it.
+as a last step before finishing a session, update the todo and your impl file to remove done tasks. they should not contain documentation.
+
+the ground trust of the goal is written in ./refactor_plan.md. The human also maintains a todo file for things that needs to be worked on: ./human-todo-notes.txt. do not modify these.

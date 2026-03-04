@@ -12,3 +12,11 @@ new ones however do:
 ```
 
 further for the torch binary-hashes files the currently do not include the information that is used to name their file. it probably is better to not have a information dependency on file structure.
+
+
+instead of having an optional arg preferBin, i would like to have allowBuildingFromSource being mandatory
+
+we need to add information of the python defined dependencies
+i.e. if a pkg in python defines that torch = >=2.8 we need to translate that into a nix expression, best via another python script. further we need to be able to manually restrict this further, if we detect a future incompatibility
+
+for wheels this is also relevant, as wheels may have a direct binary based dependency on other wheels, which may become incompatible for future versions (i.e. already incompatible now, but was not known when that version was released.)
