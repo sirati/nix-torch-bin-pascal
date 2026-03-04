@@ -10,6 +10,23 @@
 # returned scope is the directory name (which must equal the package's
 # packageName field).
 #
+# In addition to peer HLDs, every high-level.nix automatically receives one
+# utility argument if it declares it:
+#
+#   hldHelpers  – getVersionsFromCudaFiles, getVersionsFromVersionFiles, isHLD
+#
+# This means each high-level.nix only needs to declare what it uses:
+#
+#   { hldHelpers }:           # torch (no peer deps)
+#   { torch, hldHelpers }:    # flash-attn / causal-conv1d
+#
+# HLD files return plain attrsets.  pkgs/default.nix passes every loaded
+# attrset through hldType.validate, which:
+#   - checks that all required fields are present
+#   - checks that no unknown fields are present
+#   - fills in defaults for optional fields (data = {})
+#   - stamps the result with _isHighLevelDerivation = true
+#
 # Usage from flake.nix:
 #   let pytorchScope = import ./pkgs; in
 #   pytorchScope.torch          # torch HLD
@@ -25,6 +42,10 @@ let
   # forward references).
   fix = f: let x = f x; in x;
 
+  # ── HLD type definition ───────────────────────────────────────────────────
+  # Provides validate (stamps + checks each loaded HLD) and check (predicate).
+  hldType = import ./hld-type.nix;
+
   # ── Discover package directories ──────────────────────────────────────────
   # Only include subdirectories that actually contain a high-level.nix file.
   dirEntries = builtins.readDir ./.;
@@ -34,6 +55,14 @@ let
       dirEntries.${name} == "directory"
       && builtins.pathExists (./. + "/${name}/high-level.nix"))
     (builtins.attrNames dirEntries);
+
+  # ── Utility attributes ─────────────────────────────────────────────────────
+  # Injected into every high-level.nix that declares them as arguments.
+  # NOT exported by this file (only actual package HLDs are exported).
+  utilities = {
+    # Shared getVersions helpers + isHLD type-check
+    hldHelpers = import ../concretise/hld-helpers.nix;
+  };
 
   # ── callFromScope ─────────────────────────────────────────────────────────
   # Given the lazily-resolved final scope and an HLD function, introspects the
@@ -47,17 +76,31 @@ let
     in
     fn providedArgs;
 
-  # ── Fixed-point scope ─────────────────────────────────────────────────────
-  # Each package directory is loaded exactly once.  The fixed-point ensures
-  # that when e.g. flash-attn/high-level.nix declares { torch }:, it receives
-  # the real torch HLD from this same scope — evaluated lazily so definition
-  # order does not matter.
-  scope = fix (self:
+  # ── Internal fixed-point scope ────────────────────────────────────────────
+  # Combines utility attributes with lazily-resolved HLD entries so that when
+  # e.g. flash-attn/high-level.nix declares { torch, hldHelpers }:, both are
+  # found in the scope and injected automatically.
+  #
+  # Each loaded HLD attrset is passed through hldType.validate so that:
+  #   - required fields are enforced at load time with a clear error
+  #   - optional fields receive their defaults (data = {})
+  #   - _isHighLevelDerivation = true is stamped on every HLD
+  #
+  # Definition order does not matter: the fixed-point ensures each HLD sees
+  # the fully-evaluated scope through `self`.
+  internalScope = fix (self:
+    utilities //
     builtins.listToAttrs (map (name: {
       inherit name;
-      value = callFromScope self (import (./. + "/${name}/high-level.nix"));
+      value = hldType.validate name
+        (callFromScope self (import (./. + "/${name}/high-level.nix")));
     }) pkgDirNames)
   );
 
 in
-scope
+# Only expose the actual package HLDs in the returned attrset (not utilities).
+# Consumers (flake.nix, concretise) only need the HLD values.
+builtins.listToAttrs (map (name: {
+  inherit name;
+  value = internalScope.${name};
+}) pkgDirNames)

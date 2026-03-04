@@ -1,97 +1,61 @@
-# Steps 7a + 7b + 7c + pkgs/ refactor – COMPLETE
-
-All tasks are done and `nix flake check --no-build` passes cleanly.
+# All immediate tasks complete
 
 ---
 
-## pkgs/ refactor (this session)
+## HLD type + hldHelpers injection (this session)
 
 ### What changed
 
-- `torch/`, `flash-attn/`, `causal-conv1d/` moved into a new `pkgs/` subdirectory.
+- `concretise/hld-helpers.nix`: added `isHLD` helper
+  (`x: x._isHighLevelDerivation or false`) alongside the existing
+  `getVersionsFromCudaFiles` / `getVersionsFromVersionFiles` functions.
 
-- `pkgs/default.nix` created: auto-discovers every subdirectory that contains a
-  `high-level.nix` and builds a lazily-resolved fixed-point scope so inter-package
-  dependencies are wired automatically by name (same pattern as `lib.makeScope` /
-  `lib.fix` + `callPackage`).  No manual HLD wiring in `flake.nix` anymore.
+- `pkgs/hld-type.nix` (new file): exports `mkHLD`, a constructor/validator
+  function for HLD attrsets.
+  - Required fields: `packageName`, `highLevelDeps`, `getVersions`, `buildBin`,
+    `buildSource`
+  - Optional fields: `data` (defaults to `{}`)
+  - Throws with a clear diagnostic on missing or unknown fields
+  - Automatically stamps the result with `_isHighLevelDerivation = true` and
+    fills in `data = {}` so HLD authors never set those manually
 
-- All relative paths inside moved files updated (`../` → `../../` for paths that
-  crossed the new `pkgs/` boundary):
-  - `pkgs/torch/high-level.nix`       – `../../concretise/hld-helpers.nix`
-  - `pkgs/torch/override-common.nix`  – `../../generate-binary-hashes/lib.nix`
-  - `pkgs/flash-attn/high-level.nix`  – `../../concretise/hld-helpers.nix`
-  - `pkgs/flash-attn/override.nix`    – `../../generate-binary-hashes/lib.nix`
-  - `pkgs/causal-conv1d/high-level.nix` – `../../concretise/hld-helpers.nix`
-  - `pkgs/causal-conv1d/override.nix` – `../../generate-binary-hashes/lib.nix`
+- `pkgs/default.nix`: extended fixed-point scope with a `utilities` attrset
+  (`{ hldHelpers, mkHLD }`) that is merged into the internal scope before the
+  per-package entries.  The returned (external) scope still contains only the
+  three HLD attrsets — utilities are not exported.
 
-- `concretise/default.nix` – `../torch/cuda-packages-pascal.nix`
-  → `../pkgs/torch/cuda-packages-pascal.nix`
+- `pkgs/torch/high-level.nix`: signature changed from `{ }:` to
+  `{ hldHelpers, mkHLD }:`; `let hldHelpers = import …;` block removed; return
+  value wrapped with `mkHLD { … }`; `_isHighLevelDerivation = true` removed.
 
-- `test-retry-wrappers.nix` – same path update.
+- `pkgs/flash-attn/high-level.nix`: same treatment; `assert` updated from
+  `torch._isHighLevelDerivation or false` to `hldHelpers.isHLD torch`.
 
-- `flake.nix` – manual `torchHLD` / `flashAttnHLD` / `causalConv1dHLD` bindings
-  replaced with a single `pytorchScope = import ./pkgs;`.
-  `pytorch-packages` output is now `pytorchScope // { concretise = …; }`.
-  Path references to `./torch/cuda-packages-pascal.nix` updated to
-  `./pkgs/torch/cuda-packages-pascal.nix`.
+- `pkgs/causal-conv1d/high-level.nix`: same treatment as flash-attn.
 
-### Adding a new package
+### Effect for future package authors
 
-Create `pkgs/<name>/high-level.nix` as a function whose argument names match
-other HLD attribute names in the scope.  `pkgs/default.nix` picks it up
-automatically on the next evaluation — no changes to `flake.nix` needed.
-
----
-
-## Step 7c – Cross-concretise mixing detection (COMPLETE)
-
-### What was built
-
-- `concretise/default.nix`: each concrete package is stamped with
-  `passthru.concretiseMarker = "cuda=…,pascal=…,python=…"` via a new
-  `addMarker` helper (applied in `buildOne`).
-
-- `checkedWithPackages` wrapper replaces `augmentedPython.withPackages`.
-  When called, it inspects every requested package for a `concretiseMarker`
-  and throws a clear diagnostic if any marker differs from the current call's
-  marker.  Packages without a marker (plain nixpkgs packages like `numpy`)
-  are silently accepted.
-
-- `result.python` now returns `checkedPython` (the wrapped interpreter) so
-  callers automatically get the mixing check when they call
-  `result.python.withPackages (ps: [...])`.
+Adding a new package under `pkgs/<name>/high-level.nix` now requires only:
+1. Declare `{ hldHelpers, mkHLD }:` (plus any peer HLD names) as arguments.
+2. Return `mkHLD { packageName = …; highLevelDeps = …; getVersions = …;
+   buildBin = …; buildSource = …; }`.
+3. Misspelled or missing fields are caught immediately at evaluation time with
+   a clear error from `mkHLD`.
 
 ---
 
-## Compiler-version validation (COMPLETE)
+## Previous completed work (kept for reference)
 
-- `concretise/default.nix`: added `_checkCudaCompiler` assert (evaluated
-  before the return attrset).  Checks that `pkgs.gcc13.version` starts with
-  `"13."`.  Fails with a clear diagnostic if:
-  - `pkgs.gcc13` is absent from the provided nixpkgs instance, or
-  - its version major component is not 13.
-
----
-
-## What was already built (steps 7a + 7b)
-
-### 7a – Self-describing binary-hashes
-
-- `generate-binary-hashes/nix_writer.py`: `prefix_attrs` / `prefix_attrs_fn` parameters.
-- `torch/generate-hashes.py`: emits `_cudaLabel`.
-- `flash-attn/generate-hashes.py` + `causal-conv1d/generate-hashes.py`: emit `_version`.
-- Existing binary-hashes files patched with self-identifying keys.
-- `concretise/hld-helpers.nix`: filters `_cudaLabel` in `getVersionsFromCudaFiles`.
-
-### 7b – Fail-early binary availability check
-
-- `concretise/default.nix`: `_checkBinAvailable` pre-flight check throws a clear
-  diagnostic when `preferBin = true` and `getVersions` returns `[]`.
+- Steps 7a + 7b + 7c complete
+- pkgs/ refactor complete (torch/, flash-attn/, causal-conv1d/ → pkgs/)
+- Compiler-version validation in concretise/default.nix complete
+- Cross-concretise mixing detection (concretiseMarker + checkedWithPackages) complete
 
 ---
 
 # Next steps (longer term)
 
-- Implement `buildSource` / the four-derivation split described in `refactor_plan.md`
-- 7c marker check does not cover the case where the user bypasses `result.python`
-  and constructs a Python environment manually; document this limitation
+- Implement `buildSource` / the four-derivation split described in
+  `refactor_plan.md` — this is the main remaining feature
+- 7c mixing check limitation: only fires via `result.python.withPackages`;
+  document this when buildSource lands

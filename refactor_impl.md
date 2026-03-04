@@ -1,10 +1,36 @@
 # Refactor Implementation Notes
 
-## Status: steps 1–7c complete + pkgs/ refactor complete
+## Status: steps 1–7c complete + pkgs/ refactor complete + HLD type + hldHelpers injection complete
 
 ---
 
-## pkgs/ refactor (this session)
+## HLD type + hldHelpers injection (last session)
+
+`pkgs/hld-type.nix` (new file) exports `mkHLD`, a constructor/validator for
+HLD attrsets.  Required fields: `packageName`, `highLevelDeps`, `getVersions`,
+`buildBin`, `buildSource`.  Optional field: `data` (defaults to `{}`).
+Throws a descriptive error on any missing or unknown field.  Automatically
+stamps the result with `_isHighLevelDerivation = true` so HLD authors never
+set it manually.
+
+`concretise/hld-helpers.nix` gained an `isHLD` helper
+(`x: x._isHighLevelDerivation or false`) alongside the existing
+`getVersionsFrom*` functions.
+
+`pkgs/default.nix` extended: a `utilities` attrset `{ hldHelpers, mkHLD }` is
+merged into the internal fixed-point scope before the per-package entries.  The
+exported scope still contains only the three HLD attrsets — utilities are not
+leaked to consumers.
+
+All three `pkgs/*/high-level.nix` files updated:
+- Signature: `{ hldHelpers, mkHLD }:` (plus peer HLD names for deps)
+- `let hldHelpers = import …;` block removed
+- `assert torch._isHighLevelDerivation or false` → `assert hldHelpers.isHLD torch`
+- Return value wrapped with `mkHLD { … }`; `_isHighLevelDerivation = true` removed
+
+---
+
+## pkgs/ refactor (previous session)
 
 All three package directories moved under a new `pkgs/` subdirectory.
 `pkgs/default.nix` auto-discovers every subdirectory that contains a
@@ -65,14 +91,28 @@ unexpected major version.
 
 Step 6 then merged `torch-cu126/` and `torch-cu128/` into `torch/` and deleted them.
 
-### High-level derivations / HLD interface (steps 3–4 ✓)
-Each package folder has `high-level.nix` exporting a plain attrset (not a derivation):
-- `_isHighLevelDerivation = true`
-- `packageName`
-- `highLevelDeps = { name -> hld }`
-- `getVersions = cudaLabel -> [versionString]`  ← delegates to `concretise/hld-helpers.nix`
-- `buildBin  = { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version } -> drv`
-- `buildSource = …` (throws – not yet implemented)
+### High-level derivations / HLD interface (steps 3–4 ✓, type/injection added later)
+Each package folder has `high-level.nix` that is a **function** returning a
+validated HLD attrset via `mkHLD`.  The function signature declares argument
+names that are auto-injected by `pkgs/default.nix`:
+
+- Peer HLD names (e.g. `torch`) — injected from the fixed-point scope
+- `hldHelpers` — `{ isHLD, getVersionsFromCudaFiles, getVersionsFromVersionFiles }`
+- `mkHLD` — constructor/validator (defined in `pkgs/hld-type.nix`)
+
+`mkHLD` stamps the returned attrset with `_isHighLevelDerivation = true` and
+fills in `data = {}` if omitted.  It throws at evaluation time if any required
+field is missing or any unknown field is present.
+
+HLD required fields (enforced by `mkHLD`):
+- `packageName`    — string; must match the `pkgs/` subdirectory name
+- `highLevelDeps`  — `{ name -> hld }` (may be `{}`)
+- `getVersions`    — `cudaLabel -> pyVer -> [ versionString ]`; delegates to `hldHelpers`
+- `buildBin`       — `{ pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version } -> drv`
+- `buildSource`    — same args; throws "not yet implemented" in current packages
+
+HLD optional fields:
+- `data`           — arbitrary attrset for package-specific metadata; defaults to `{}`
 
 `getVersions` reads directly from the package's `binary-hashes/` folder so versions are
 never hardcoded in the HLD itself.  The scanning/filtering logic is **shared** in
@@ -100,17 +140,29 @@ concretise/
 
 Version selection: calls `hld.getVersions cudaLabel`, sorts with `lib.versionOlder`, picks latest.
 
-### `concretise/hld-helpers.nix` (step 6 ✓)
-Two reusable helpers for the two binary-hashes directory layouts:
+### `concretise/hld-helpers.nix` (step 6 ✓, isHLD added later)
+Three helpers for working with HLDs and their binary-hashes layouts.
+Injected into every `high-level.nix` as the `hldHelpers` argument by
+`pkgs/default.nix`.
 
-- `getVersionsFromCudaFiles binaryHashesDir cudaLabel`
-  For torch: reads `binaryHashesDir/{cudaLabel}.nix`, returns `builtins.attrNames`.
+- `isHLD x`
+  Returns `true` iff `x` carries `_isHighLevelDerivation = true` (i.e. was
+  constructed via `mkHLD`).  Used in HLDs to assert peer dependencies.
+
+- `getVersionsFromCudaFiles binaryHashesDir cudaLabel pyVer`
+  For torch: reads `binaryHashesDir/{cudaLabel}.nix`, filters by `pyVer`.
   Returns `[]` if the file does not exist.
 
-- `getVersionsFromVersionFiles binaryHashesDir cudaLabel`
+- `getVersionsFromVersionFiles binaryHashesDir cudaLabel pyVer`
   For flash-attn / causal-conv1d: scans `binaryHashesDir/` for `v*.nix` files,
-  returns only versions whose file contains a key for `cudaLabel` or the generic
-  `"cu12"` fallback.
+  returns only versions whose file contains a key for `cudaLabel` (or the
+  generic `"cu12"` fallback) and a wheel entry for `pyVer`.
+
+### `pkgs/hld-type.nix` (added this session)
+Exports the `mkHLD` constructor/validator function.  Validates required and
+optional fields, stamps `_isHighLevelDerivation = true`, fills `data = {}`.
+Injected into every `high-level.nix` as the `mkHLD` argument by
+`pkgs/default.nix`.
 
 ### `flake.nix` `pytorch-packages` output (step 5 ✓)
 ```

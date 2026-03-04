@@ -6,6 +6,9 @@
 # causal-conv1d depends on torch at the high level.  When concretised, the
 # resolved concrete torch derivation is available via resolvedDeps."torch".
 #
+# hldHelpers and mkHLD are injected automatically by pkgs/default.nix.
+# No manual import of hld-helpers.nix is needed here.
+#
 # Usage:
 #   let pp = inputs.this-flake.pytorch-packages; in
 #   pp.concretise {
@@ -15,22 +18,12 @@
 #     cuda     = "12.6";
 #   };
 
-{ torch }:
-
-let
-  hldHelpers = import ../../concretise/hld-helpers.nix;
-in
+{ torch, hldHelpers }:
 
 # Fail early if the caller passed something other than a high-level derivation.
-assert torch._isHighLevelDerivation or false;
+assert hldHelpers.isHLD torch;
 
 {
-  # ── Type marker ────────────────────────────────────────────────────────────
-  _isHighLevelDerivation = true;
-
-  # ── Identity ───────────────────────────────────────────────────────────────
-  packageName = "causal-conv1d";
-
   # ── Binary availability ────────────────────────────────────────────────────
   # causal-conv1d uses per-version files: binary-hashes/v{version}.nix
   # Each file is a plain attrset keyed by cudaVersion label.

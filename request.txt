@@ -1,0 +1,7 @@
+update and after finishing the request of the message continue working on ./refactor_immediate_todo.md
+keep in mind you longer term impl plan ./refactor_impl.md
+always remove done work from the immediate todos.
+
+if there are no more immediate todos, continue working on ./refactor_impl.md and after finishing a session, update the immediate todos that were not completed during this session, but for which you have already done thinking and planning, so that this thinking effort is not lost.
+
+the ground trust of the goal is written in ./refactor_plan.md. do not modify it.

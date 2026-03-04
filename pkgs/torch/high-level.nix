@@ -1,10 +1,13 @@
 # High-level derivation for PyTorch.
 #
-# getVersions is provided by the shared helper in concretise/hld-helpers.nix.
+# getVersions is provided by the shared helper injected from pkgs/default.nix.
 # torch uses the per-CUDA-label layout: binary-hashes/{cudaLabel}.nix
 #
 # This is NOT a buildable derivation.  Import it and pass it (along with other
 # high-level derivations) to concretise.nix, which resolves the concrete build.
+#
+# hldHelpers and mkHLD are injected automatically by pkgs/default.nix.
+# No manual import of hld-helpers.nix is needed here.
 #
 # Usage:
 #   let pp = inputs.this-flake.pytorch-packages; in
@@ -15,19 +18,9 @@
 #     cuda     = "12.6";
 #   };
 
-{ }:
-
-let
-  hldHelpers = import ../../concretise/hld-helpers.nix;
-in
+{ hldHelpers }:
 
 {
-  # ── Type marker ────────────────────────────────────────────────────────────
-  _isHighLevelDerivation = true;
-
-  # ── Identity ───────────────────────────────────────────────────────────────
-  packageName = "torch";
-
   # ── Binary availability ────────────────────────────────────────────────────
   # torch uses per-CUDA-label files: binary-hashes/{cudaLabel}.nix
   # Each file is a plain attrset keyed by version string.

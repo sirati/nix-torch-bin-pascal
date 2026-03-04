@@ -1,7 +1,9 @@
 # Shared helpers for high-level derivations (HLDs).
 #
 # This file provides reusable getVersions implementations for the two
-# binary-hashes directory layouts used across packages:
+# binary-hashes directory layouts used across packages, plus a type-check
+# helper (isHLD) used both by high-level.nix dependency asserts and by
+# pkgs/default.nix when wiring the fixed-point scope.
 #
 #   getVersionsFromCudaFiles
 #     For packages like torch whose binary-hashes/ contains one file per
@@ -20,18 +22,27 @@
 # alone.  This allows concretise to fail early with a clear diagnostic instead
 # of surfacing a cryptic evaluation error deep inside an override.nix file.
 #
-# Usage in a high-level.nix:
+# Usage in a high-level.nix (injected via pkgs/default.nix scope):
 #
-#   let hldHelpers = import ../concretise/hld-helpers.nix; in
-#   {
+#   { hldHelpers, mkHLD, torch }:
+#   mkHLD {
 #     getVersions = hldHelpers.getVersionsFromCudaFiles    ./binary-hashes;
 #     # or
 #     getVersions = hldHelpers.getVersionsFromVersionFiles ./binary-hashes;
+#     ...
 #   }
 #
 # Both produce a curried function:  cudaLabel -> pyVer -> [ versionString ]
 
 {
+  # --------------------------------------------------------------------------
+  # isHLD
+  #
+  # Returns true iff value x is a validated high-level derivation (i.e. was
+  # constructed via mkHLD and therefore carries _isHighLevelDerivation = true).
+  # --------------------------------------------------------------------------
+  isHLD = x: x._isHighLevelDerivation or false;
+
   # --------------------------------------------------------------------------
   # getVersionsFromCudaFiles
   #
