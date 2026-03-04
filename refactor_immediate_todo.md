@@ -1,93 +1,79 @@
-# Immediate TODOs
+## versionConstraints mechanism: keep in concretise, not yet in fieldSpecs
 
-## causal-conv1d 1.6.0 ABI incompatibility with torch >= 2.9
+`concretise/default.nix` has `allVersionConstraints` / `applyVersionConstraints`
+infrastructure that reads `hld.versionConstraints or {}` from each HLD.
+Currently no HLD declares this field, so the code is dormant.
 
-### Finding (this session)
-
-Attempted `nix build` for Python 3.13 + CUDA 12.8:
-
-- **torch only** (`test-torch-py313-cu128`): **SUCCESS** — torch 2.10.0+cu128
-  built and `torch.cuda.is_available()` returned `True`.
-
-- **torch + causal-conv1d** (`test-causal-conv1d-py313-cu128`): **FAIL** at
-  `pythonImportsCheckPhase` with:
-
-  ```
-  ImportError: causal_conv1d_cuda.cpython-313-x86_64-linux-gnu.so:
-    undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_ib
-  ```
-
-  Demangled: `c10::cuda::c10_cuda_check_implementation(int, char const*,
-  char const*, int, bool)` — a symbol that was removed from PyTorch in a
-  release between 2.8 and 2.10.
-
-- **all three** (`test-all-py313-cu128`): not attempted (blocked by above).
-
-### Root cause
-
-`pkgs/causal-conv1d/binary-hashes/v1.6.0.nix` contains cu12 compat keys only
-up to `"2.8"`.  `concretise` picks torch 2.10.0 (latest available for
-cu128/py313), the compat fallback logic in `override.nix` selects the 2.8
-wheel, but that wheel references `c10_cuda_check_implementation` which was
-removed in torch >= 2.9.  This is a genuine ABI break.
-
-The same issue will affect the cu126 default build (which also now has torch
-2.10.0 as latest).
-
-### Investigation needed before fixing
-
-1. Confirm whether `c10_cuda_check_implementation` was removed in 2.9 or 2.10
-   (check PyTorch changelog / GitHub).
-2. Check whether causal-conv1d has a release newer than 1.6.0 with wheels
-   built against torch 2.9 / 2.10:
-   https://github.com/Dao-AILab/causal-conv1d/releases
-3. If a newer causal-conv1d release exists, run its `generate-hashes.py` and
-   add the new `binary-hashes/v{version}.nix` file.
-4. If no newer release exists, the only short-term fix is to cap torch at 2.8
-   when causal-conv1d is in the package list — this requires a version-capping
-   mechanism in `concretise` (see design note below).
-
-### Design note – version capping
-
-One option: let HLDs declare an optional `maxTorchVersion` field (or a
-`versionConstraints` field) that `concretise` respects when selecting the torch
-version via `getVersions`.  Alternatively, the compat-key selection logic in
-`causal-conv1d/override.nix` could be extended to refuse compat keys that are
-known to be ABI-incompatible with the resolved torch version.
-
-A simpler short-term option: downgrade the maximum cu128 and cu126 torch
-version to 2.8.x until a causal-conv1d update is available — i.e. remove the
-2.9.x and 2.10.x entries from the binary-hashes files.  This is safe because
-those entries are not yet used by any working build.
-
-### Also check: default cu126-pascal build
-
-The default flake output (`packages.x86_64-linux.default`) uses cu126 + pascal
-+ all three packages + Python 3.13.  Since cu126 also now has torch 2.10.0 as
-latest, it will hit the same ABI break.  Verify by building:
-
-```
-nix build .#packages.x86_64-linux.default
-```
-
-and confirm whether it passes or fails.
+Decision: do NOT add `versionConstraints` to `fieldSpecs` until a genuine
+use-case is identified that cannot be handled by `override.nix` logic.
 
 ---
 
-## Previously completed (kept for reference)
+## Testing needed
 
-- HLD type + hldHelpers injection complete
-- Steps 7a + 7b + 7c complete
-- pkgs/ refactor complete
-- Compiler-version validation in concretise/default.nix complete
-- Cross-concretise mixing detection (concretiseMarker + checkedWithPackages) complete
+The following were implemented but not yet tested end-to-end:
+
+### `nix develop` devShell — python3 in PATH
+- Run `nix develop .#devShells.x86_64-linux.test-causal-conv1d-py313-cu128`
+- Confirm `python3 --version` works inside the shell
+- Confirm `python3 -c "import causal_conv1d"` works (requires a GPU build or
+  skipped import check)
+
+### `wheel-helpers.nix` — binary wheel builds
+- Confirm `nix build .#packages.x86_64-linux.test-causal-conv1d-py313-cu128`
+  still produces a valid derivation after the override.nix refactor
+- Confirm `nix build .#packages.x86_64-linux.test-all-py313-cu128` still works
+  (flash-attn binary wheel path goes through wheel-helpers.nix)
+
+### `generate-hashes.py` combined binary+source generator (causal-conv1d)
+- Run `nix-shell pkgs/causal-conv1d/generate-hashes.py -- --skip-source --tag v1.6.0`
+  from the project root and verify:
+  - `binary-hashes/v1.6.0.nix` is regenerated correctly (matches existing file)
+  - header line reads `-- --skip-source --tag v1.6.0` as expected
+- Run with `--tag v1.6.0` (without --skip-source) and confirm source hash is
+  skipped with "already exists — skipping" message in stderr
+- Run with `--tag v1.6.0` after deleting `source-hashes/v1.6.0.nix` and confirm
+  the file is regenerated with the correct hash
+  (`sha256-hFaF/oMdScDpdq+zq8WppWe9GONWppEEx2pIcnaALiI=`)
+- Run without `--tag` (all-releases mode) and confirm:
+  - too-old releases (published <= 2022) are skipped before any API fetch
+  - superseded post-releases (e.g. v1.5.0.post3 when v1.5.0.post8 exists) are
+    skipped before any API fetch
+  - `missing-digests.txt` is written with correct sections when applicable
+  - all expected `binary-hashes/v*.nix` files are written/skipped correctly
+
+### `source_fetcher.py` / `source_github` module
+- Confirm `list_release_tags("Dao-AILab/causal-conv1d")` returns at least `v1.6.0`
+- Confirm `source_hash_exists` returns True for the now-present `v1.6.0.nix`
+- Unit-test `winning_tag_for_base_versions`:
+  `["v1.6.0", "v1.6.0.post1", "v1.5.0"]` → `{"1.6.0": "v1.6.0.post1", "1.5.0": "v1.5.0"}`
+
+### `override-source.nix` folder path
+- Confirm `nix build .#packages.x86_64-linux.test-causal-conv1d-from-source-py313-cu128`
+  still evaluates (no path error on the new `./source-hashes + "/v…"` import)
+
+### `pkg_helpers.make_torch_binary_header_template`
+- Confirm the `{version}` placeholder survives and is substituted correctly in
+  generated files (i.e. `v1.6.0.nix` header contains `--tag v1.6.0`, not `--tag v{version}`)
+- Confirm `{{ }}` Nix attribute-set examples render as `{ }` in the output file
 
 ---
 
-## Next steps (longer term, unblocked)
+## Longer-term
 
-- Implement `buildSource` / the four-derivation split described in
-  `refactor_plan.md` — this is the main remaining feature (independent of the
-  causal-conv1d ABI issue above)
+- Implement `buildSource` / four-derivation split for torch and flash-attn
+  (causal-conv1d buildSource is now implemented)
+- Add `pkgs/flash-attn/generate-source-hashes.py` once flash-attn buildSource
+  is implemented (mirror the causal-conv1d pattern using source_fetcher.py)
+- Add python-defined dependency information: translate Python package version
+  requirements into Nix expressions; handle wheel-level binary ABI compat
 - 7c mixing check limitation: only fires via `result.python.withPackages`;
-  document this when buildSource lands
+  revisit when buildSource lands for torch
+- Add cu130 support to `concretise/default.nix` once nixpkgs exposes
+  `cudaPackages_13_0` (hash files already generated in
+  `pkgs/torch/binary-hashes/cu130.nix`)
+- `_checkBinAvailable` does not account for `canBuildBin`: when
+  `allowBuildingFromSource = false`, the fail-early check passes if a binary
+  version exists but `canBuildBin` would return false for it.  The error is
+  still caught (inside `buildOne`), just not as early.  Revisit once the
+  `canBuildBin` predicate is used by more packages.

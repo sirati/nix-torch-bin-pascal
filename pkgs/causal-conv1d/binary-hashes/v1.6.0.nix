@@ -1,6 +1,6 @@
 # WARNING: Auto-generated file. Do not edit manually!
 # Source:  https://github.com/Dao-AILab/causal-conv1d/releases
-# To regenerate: nix-shell causal-conv1d/generate-hashes.py [-- --tag v1.6.0]
+# To regenerate: nix-shell pkgs/causal-conv1d/generate-hashes.py [-- --tag v1.6.0]
 #
 # Structure: cudaVersion -> torchCompat -> pyVer -> os -> arch
 #
@@ -14,10 +14,11 @@
 #   { name, url, hash }
 # When a FALSE cxx11abi (pre-cxx11 ABI) wheel also exists it is embedded as:
 #   { name, url, hash, precx11abi = { name, url, hash }; }
+
 {
   _version = "1.6.0";
-
   cu11 = {
+
     # ── torch 2.5 ─────────────────────────────────────────────────────────
     "2.5" = {
       py310 = {
@@ -199,6 +200,7 @@
     };
   };
   cu12 = {
+
     # ── torch 2.5 ─────────────────────────────────────────────────────────
     "2.5" = {
       py310 = {
@@ -590,8 +592,9 @@
     };
   };
   cu13 = {
-    # ── torch 25.08 ───────────────────────────────────────────────────────
-    "25.08" = {
+
+    # ── torch nvidia-container-25.08 ──────────────────────────────────────
+    "nvidia-container-25.08" = {
       py312 = {
         linux = {
           aarch64 = {
@@ -608,8 +611,8 @@
       };
     };
 
-    # ── torch 25.09 ───────────────────────────────────────────────────────
-    "25.09" = {
+    # ── torch nvidia-container-25.09 ──────────────────────────────────────
+    "nvidia-container-25.09" = {
       py312 = {
         linux = {
           aarch64 = {
@@ -626,8 +629,8 @@
       };
     };
 
-    # ── torch 25.10 ───────────────────────────────────────────────────────
-    "25.10" = {
+    # ── torch nvidia-container-25.10 ──────────────────────────────────────
+    "nvidia-container-25.10" = {
       py312 = {
         linux = {
           aarch64 = {
@@ -644,8 +647,8 @@
       };
     };
 
-    # ── torch 25.11 ───────────────────────────────────────────────────────
-    "25.11" = {
+    # ── torch nvidia-container-25.11 ──────────────────────────────────────
+    "nvidia-container-25.11" = {
       py312 = {
         linux = {
           aarch64 = {
@@ -662,8 +665,8 @@
       };
     };
 
-    # ── torch 25.12 ───────────────────────────────────────────────────────
-    "25.12" = {
+    # ── torch nvidia-container-25.12 ──────────────────────────────────────
+    "nvidia-container-25.12" = {
       py312 = {
         linux = {
           aarch64 = {
@@ -680,8 +683,8 @@
       };
     };
 
-    # ── torch 26.01 ───────────────────────────────────────────────────────
-    "26.01" = {
+    # ── torch nvidia-container-26.01 ──────────────────────────────────────
+    "nvidia-container-26.01" = {
       py312 = {
         linux = {
           aarch64 = {

@@ -12,15 +12,19 @@
 #
 # ── Config fields ──────────────────────────────────────────────────────────────
 #
-#   pkgs       (required)  nixpkgs instance, e.g. from flake inputs
-#   packages   (required)  list of HLDs to include; transitive deps are added
-#                          automatically – passing just [ flash-attn ] is enough
-#   python     (required)  Python version as "3.11" | "3.12" | "3.13" | "3.14"
-#   cuda       (required)  CUDA toolkit version as "12.6" | "12.8"
-#   pascal     (optional)  bool – use Pascal-compatible CUDA packages
-#                          (cuDNN 9.10.2, cuTENSOR 2.1.0); default false
-#   preferBin  (optional)  bool – prefer pre-built wheels over source builds;
-#                          default true
+#   pkgs                    (required)  nixpkgs instance, e.g. from flake inputs
+#   packages                (required)  list of HLDs to include; transitive deps
+#                                       are added automatically
+#   python                  (required)  Python version as "3.11"|"3.12"|"3.13"|"3.14"
+#   cuda                    (required)  CUDA toolkit version as "12.6" | "12.8"
+#   pascal                  (optional)  bool – use Pascal-compatible CUDA packages
+#                                       (cuDNN 9.10.2, cuTENSOR 2.1.0); default false
+#   allowBuildingFromSource (required)  bool – set to true to fall back to source
+#                                       builds when no pre-built wheel is available;
+#                                       set to false to fail early if any package
+#                                       lacks a pre-built wheel (source builds are
+#                                       not yet implemented, so false is the safe
+#                                       choice for now)
 #
 # ── Usage ─────────────────────────────────────────────────────────────────────
 #
@@ -55,11 +59,15 @@
 #   }
 
 { pkgs
-, packages         # list of HLDs; transitive deps are collected automatically
-, python           # "3.11" | "3.12" | "3.13" | "3.14"
-, cuda             # "12.6" | "12.8"
-, pascal    ? false
-, preferBin ? true
+, packages                # list of HLDs; transitive deps are collected automatically
+, python                  # "3.11" | "3.12" | "3.13" | "3.14"
+, cuda                    # "12.6" | "12.8"
+, torch                   # required – major.minor torch series, e.g. "2.10"
+                          # Wheels are NOT forward-compatible across minor versions,
+                          # so this must be specified explicitly to avoid silently
+                          # selecting an incompatible torch build.
+, pascal             ? false
+, allowBuildingFromSource  # required – true to allow source builds, false to fail early
 }:
 
 let
@@ -69,6 +77,15 @@ let
 
   _validPythons = [ "3.11" "3.12" "3.13" "3.14" ];
   _validCudas   = [ "12.6" "12.8" ];
+
+  # torch is validated as a free-form "major.minor" string rather than an
+  # enumerated list, because new minor releases appear frequently.
+  _checkTorch =
+    builtins.match "[0-9]+\\.[0-9]+" torch != null
+    || throw (
+      "concretise: 'torch' must be a major.minor version string "
+      + "(e.g. \"2.10\"), got '${toString torch}'"
+    );
 
   _checkPython =
     builtins.elem python _validPythons
@@ -137,7 +154,7 @@ let
     "python" + lib.replaceStrings [ "." ] [ "" ] python;
 
   # Nix-style Python version key used in binary-hashes attrsets, e.g. "py313".
-  # Matches the pyVer computed by generate-binary-hashes/lib.nix at build time.
+  # Matches the pyVer computed by generate-hashes/lib.nix at build time.
   pyVer = "py" + lib.replaceStrings [ "." ] [ "" ] python;
 
   basePython =
@@ -203,7 +220,7 @@ let
 
   allHLDs = collectAll packages;
 
-  # ── Topological sort ──────────────────────────────────────────────────────
+  # ── Topological sort ─────────────────────────────────────────────────────
 
   # Use lib.toposort so deeper dependency chains (beyond the current three
   # packages) are handled correctly without manual ordering.
@@ -222,45 +239,147 @@ let
     )
     else topoResult.result;
 
+  # ── Version constraints ───────────────────────────────────────────────────
+
+  # Each HLD may declare versionConstraints = { "depPkgName" = { maxVersion = …; }; }
+  # Collect all constraints from all HLDs in this build and merge them by
+  # package name.  When two HLDs constrain the same dependency:
+  #   - maxVersion: take the stricter (lower) bound
+  #   - minVersion: take the stricter (higher) bound
+  allVersionConstraints =
+    lib.foldl' (acc: hld:
+      let
+        constraints = hld.versionConstraints or {};
+      in
+      lib.foldl' (acc2: depName:
+        let
+          existing  = acc2.${depName} or {};
+          incoming  = constraints.${depName};
+          maxVersion =
+            if existing ? maxVersion && incoming ? maxVersion
+            then
+              if lib.versionOlder existing.maxVersion incoming.maxVersion
+              then existing.maxVersion    # existing bound is lower → stricter
+              else incoming.maxVersion
+            else existing.maxVersion or incoming.maxVersion or null;
+          minVersion =
+            if existing ? minVersion && incoming ? minVersion
+            then
+              if lib.versionOlder incoming.minVersion existing.minVersion
+              then existing.minVersion    # existing bound is higher → stricter
+              else incoming.minVersion
+            else existing.minVersion or incoming.minVersion or null;
+          merged =
+            {}
+            // (if maxVersion != null then { inherit maxVersion; } else {})
+            // (if minVersion != null then { inherit minVersion; } else {});
+        in
+        acc2 // { ${depName} = merged; }
+      ) acc (builtins.attrNames constraints)
+    ) {} sortedHLDs;
+
+  # Apply the collected constraints for a given package name to a list of
+  # version strings, returning only those that satisfy all bounds.
+  applyVersionConstraints = pkgName: versions:
+    let
+      c      = allVersionConstraints.${pkgName} or {};
+      maxOk  = v: !(c ? maxVersion) || !(lib.versionOlder c.maxVersion v);
+      minOk  = v: !(c ? minVersion) || !(lib.versionOlder v c.minVersion);
+    in
+    lib.filter (v: maxOk v && minOk v) versions;
+
   # ── Build one package ─────────────────────────────────────────────────────
+
+  # Return the major.minor prefix of a full version string, e.g. "2.10.0" → "2.10".
+  _majorMinorOf = v:
+    let parts = lib.splitString "." v;
+    in lib.concatStringsSep "." (lib.take 2 parts);
 
   buildOne = resolvedDeps: hld:
     let
-      availableVersions = hld.getVersions cudaLabel pyVer;
-      sortedVersions    = lib.sort lib.versionOlder availableVersions;
-      version           = if sortedVersions != [] then lib.last sortedVersions else null;
-      useBin            = preferBin && version != null;
+      allVersionsRaw = hld.getVersions cudaLabel pyVer;
+      # For torch itself, restrict version selection to the caller-specified
+      # major.minor series.  Binary wheels are not forward-compatible across
+      # minor versions, so "latest overall" is wrong when the user has pinned
+      # a specific series.
+      allVersions =
+        if hld.packageName == "torch"
+        then lib.filter (v: _majorMinorOf v == torch) allVersionsRaw
+        else allVersionsRaw;
+      constrainedVersions = applyVersionConstraints hld.packageName allVersions;
+      sortedVersions      = lib.sort lib.versionOlder constrainedVersions;
+      version             = if sortedVersions != [] then lib.last sortedVersions else null;
       args = {
         pkgs         = pkgsForBuild;
         inherit cudaPackages wrappers cudaLabel resolvedDeps version;
       };
+      # canBuildBin is an optional HLD field (default: always true).
+      # It lets a package signal that a discovered binary version is ABI-
+      # incompatible with the resolved dependencies (e.g. causal-conv1d wheels
+      # built against torch <= 2.8 are broken at runtime against torch >= 2.9).
+      # When false and allowBuildingFromSource is set, we fall back to
+      # buildSource (passing the resolved version so the source build knows
+      # exactly which release to compile).
+      binCompatible = version != null &&
+        hld.canBuildBin { inherit resolvedDeps version cudaLabel; };
     in
-    if useBin
-      then hld.buildBin   args
-      else hld.buildSource (args // { version = null; });
+    if binCompatible
+      then hld.buildBin args
+      else if allowBuildingFromSource
+        then hld.buildSource args
+        else throw (
+          "concretise: no usable pre-built wheel for '${hld.packageName}' "
+          + "with cudaLabel '${cudaLabel}' and Python ${python} (${pyVer})"
+          + (if version == null
+             then
+               let c = allVersionConstraints.${hld.packageName} or {}; in
+               if c != {}
+               then " (no binary version found after applying versionConstraints: "
+                    + "${builtins.toJSON c}; unconstrained versions: "
+                    + lib.concatStringsSep ", " (lib.sort lib.versionOlder allVersions)
+                    + ")"
+               else " (no binary version found)"
+             else " (version ${version} is ABI-incompatible with resolved dependencies)")
+          + ". Set allowBuildingFromSource = true to build from source."
+        );
 
   # ── Strict fold over sorted packages ─────────────────────────────────────
 
   # Builds each package in dependency order, accumulating resolvedDeps so that
   # dependents (flash-attn, causal-conv1d) can reference already-built packages.
+
   # ── Fail-early binary availability check ─────────────────────────────────
 
-  # When preferBin is true, every requested package must have at least one
-  # pre-built wheel for the requested cudaLabel.  Without this check the
-  # failure would only surface inside buildOne as an opaque "not yet
-  # implemented" throw from buildSource, which is hard to diagnose.
-  # When preferBin is true every requested package must have at least one
-  # pre-built wheel for the requested (cudaLabel, Python) combination.
-  # getVersions now filters by both axes, so an empty result here means either
-  # no CUDA wheel exists at all or no wheel exists for the requested Python
-  # version — both are surfaced with a clear diagnostic before reaching buildOne.
+  # When allowBuildingFromSource is false, every requested package must have at
+  # least one pre-built wheel for the requested (cudaLabel, Python) combination
+  # after applying versionConstraints.  Without this check the failure would only
+  # surface inside buildOne as an opaque error from buildSource or a missing-wheel
+  # throw, which is hard to diagnose.
   _checkBinAvailable =
-    !preferBin || builtins.all (hld:
-      hld.getVersions cudaLabel pyVer != []
+    allowBuildingFromSource ||
+    builtins.all (hld:
+      let
+        allVersionsRaw      = hld.getVersions cudaLabel pyVer;
+        allVersions         =
+          if hld.packageName == "torch"
+          then lib.filter (v: _majorMinorOf v == torch) allVersionsRaw
+          else allVersionsRaw;
+        constrainedVersions = applyVersionConstraints hld.packageName allVersions;
+        c                   = allVersionConstraints.${hld.packageName} or {};
+      in
+      constrainedVersions != []
       || throw (
         "concretise: no pre-built wheel available for '${hld.packageName}' "
-        + "with cudaLabel '${cudaLabel}' and Python ${python} (${pyVer}). "
-        + "Set preferBin = false to build from source (not yet implemented)."
+        + "with cudaLabel '${cudaLabel}' and Python ${python} (${pyVer})"
+        + (if allVersions != [] && constrainedVersions == []
+           then
+             " (after applying versionConstraints: ${builtins.toJSON c}; "
+             + "unconstrained versions: "
+             + lib.concatStringsSep ", " (lib.sort lib.versionOlder allVersions)
+             + ")"
+           else "")
+        + ". Set allowBuildingFromSource = true to build from source "
+        + "(source builds are not yet implemented)."
       )
     ) sortedHLDs;
 
@@ -337,6 +456,10 @@ let
 
   env = checkedPython.withPackages (_ps: lib.attrValues concretePackages);
 
+  devShell = pkgs.mkShell {
+    packages = [ env ];
+  };
+
 in
 
 # Force all validation before returning the result attrset.
@@ -350,5 +473,5 @@ assert _checkBinAvailable;
 {
   python   = checkedPython;
   packages = concretePackages;
-  inherit env;
+  inherit env devShell;
 }

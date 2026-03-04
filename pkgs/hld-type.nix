@@ -24,7 +24,7 @@
 #                     throw "my-pkg/high-level.nix: buildSource not implemented";
 #   }
 #
-# HLD files are plain attrsets – no constructor call is required.
+# HLD files are attrsets
 # pkgs/default.nix calls hldType.validate name on the result of each import.
 # packageName is injected automatically from the directory name; HLD files do
 # not declare it.
@@ -53,6 +53,16 @@ let
       description =
         "function – same args as buildBin -> derivation; build from source"
         + " (throw when not yet implemented)";
+    };
+    canBuildBin = {
+      description =
+        "function – { resolvedDeps, version, cudaLabel } -> bool; "
+        + "returns false when the pre-built wheel is ABI-incompatible with the "
+        + "resolved dependencies (e.g. causal-conv1d built against torch <= 2.8 "
+        + "is broken against torch >= 2.9). "
+        + "Defaults to always-true; only override when pre-built compat is "
+        + "constrained by resolved dep versions.";
+      default = _: true;
     };
     data = {
       description = "attrset – arbitrary package-specific metadata";

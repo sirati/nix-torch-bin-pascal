@@ -26,28 +26,11 @@
         };
       });
 
-    in
-    {
-      # ── High-level derivations + concretise function ─────────────────────────
-      #
-      # System-independent output.  Consumers import these into their own flakes:
-      #
-      #   inputs.torch-flake.url = "github:…/nix-torch-bin-pascal";
-      #
-      #   result = torch-flake.pytorch-packages.concretise {
-      #     inherit pkgs;
-      #     packages      = with torch-flake.pytorch-packages; [ torch flash-attn ];
-      #     cudaVersion   = "cu126";
-      #     isPascal      = true;
-      #     pythonVersion = "313";
-      #   };
-      #
-      pytorch-packages = pytorchScope // {
-        concretise = import ./concretise;
-      };
-
-      # ── Concrete packages ────────────────────────────────────────────────────
-      packages = forAllSystems ({ system, pkgs }:
+      # ── Per-system outputs (packages + devShells computed together) ──────────
+      # Keeping them in one block avoids duplicating the expensive let-bindings
+      # (CUDA package sets, retry wrappers, concretise calls) across separate
+      # genAttrs invocations.
+      perSystem = forAllSystems ({ system, pkgs }:
         let
           # ── CUDA package sets ───────────────────────────────────────────────
 
@@ -115,6 +98,8 @@
 
           # ── Default concrete environment ────────────────────────────────────
           # cu126-pascal, Python 3.13, all three packages.
+          # causal-conv1d 1.6.0 has no binary wheel for torch >= 2.9, so source
+          # build is required when using torch 2.10.
           defaultResult = (import ./concretise) {
             inherit pkgs;
             packages = [
@@ -122,31 +107,53 @@
               pytorchScope."flash-attn"
               pytorchScope."causal-conv1d"
             ];
-            python   = "3.13";
-            cuda     = "12.6";
-            pascal   = true;
+            python                  = "3.13";
+            cuda                    = "12.6";
+            torch                   = "2.10";
+            pascal                  = true;
+            allowBuildingFromSource = true;
           };
 
           # ── Test: torch-only, Python 3.13, CUDA 12.8 ───────────────────────
           testTorchCu128Result = (import ./concretise) {
             inherit pkgs;
-            packages = [ pytorchScope.torch ];
-            python   = "3.13";
-            cuda     = "12.8";
+            packages                = [ pytorchScope.torch ];
+            python                  = "3.13";
+            cuda                    = "12.8";
+            torch                   = "2.10";
+            allowBuildingFromSource = false;
           };
 
-          # ── Test: torch + causal-conv1d, Python 3.13, CUDA 12.8 ────────────
+          # ── Test: torch + causal-conv1d binary wheel, Python 3.13, CUDA 12.8
+          # Uses torch 2.8 which is the highest torch series for which a
+          # causal-conv1d 1.6.0 pre-built wheel exists (maxCompat = "2.8").
           testCausalCu128Result = (import ./concretise) {
             inherit pkgs;
             packages = [
               pytorchScope.torch
               pytorchScope."causal-conv1d"
             ];
-            python   = "3.13";
-            cuda     = "12.8";
+            python                  = "3.13";
+            cuda                    = "12.8";
+            torch                   = "2.8";
+            allowBuildingFromSource = false;
+          };
+
+          # ── Test: torch + causal-conv1d from source, Python 3.13, CUDA 12.8 ─
+          testCausalCu128FromSourceResult = (import ./concretise) {
+            inherit pkgs;
+            packages = [
+              pytorchScope.torch
+              pytorchScope."causal-conv1d"
+            ];
+            python                  = "3.13";
+            cuda                    = "12.8";
+            torch                   = "2.10";
+            allowBuildingFromSource = true;
           };
 
           # ── Test: all three packages, Python 3.13, CUDA 12.8 ───────────────
+          # causal-conv1d requires a source build with torch 2.10.
           testAllCu128Result = (import ./concretise) {
             inherit pkgs;
             packages = [
@@ -154,32 +161,82 @@
               pytorchScope."flash-attn"
               pytorchScope."causal-conv1d"
             ];
-            python   = "3.13";
-            cuda     = "12.8";
+            python                  = "3.13";
+            cuda                    = "12.8";
+            torch                   = "2.10";
+            allowBuildingFromSource = true;
           };
 
+          # ── Dev shell for this project (Nix tooling) ────────────────────────
+          develop = developModule { inherit pkgs; };
+
         in
-        tests // {
-          default = defaultResult.env;
+        {
+          packages = tests // {
+            default = defaultResult.env;
 
-          # Retry wrappers – exported for use in other projects
-          retry-wrappers              = allRetryWrappers;
-          retry-wrappers-pascal       = allRetryWrappersPascal;
-          retry-wrappers-cu128        = allRetryWrappersCu128;
-          retry-wrappers-cu128-pascal = allRetryWrappersCu128Pascal;
+            # Retry wrappers – exported for use in other projects
+            retry-wrappers              = allRetryWrappers;
+            retry-wrappers-pascal       = allRetryWrappersPascal;
+            retry-wrappers-cu128        = allRetryWrappersCu128;
+            retry-wrappers-cu128-pascal = allRetryWrappersCu128Pascal;
 
-          # CUDA toolkits – exported for use in other projects
-          cuda-toolkit-12-6         = cudaPackages_12_6_wrapped.cudatoolkit;
-          cuda-toolkit-12-6-pascal  = cudaPackages_12_6_pascal.cudatoolkit;
-          cuda-toolkit-12-8         = cudaPackages_12_8_wrapped.cudatoolkit;
-          cuda-toolkit-12-8-pascal  = cudaPackages_12_8_pascal.cudatoolkit;
+            # CUDA toolkits – exported for use in other projects
+            cuda-toolkit-12-6         = cudaPackages_12_6_wrapped.cudatoolkit;
+            cuda-toolkit-12-6-pascal  = cudaPackages_12_6_pascal.cudatoolkit;
+            cuda-toolkit-12-8         = cudaPackages_12_8_wrapped.cudatoolkit;
+            cuda-toolkit-12-8-pascal  = cudaPackages_12_8_pascal.cudatoolkit;
 
-          # Test environments – py313 + cu128
-          test-torch-py313-cu128         = testTorchCu128Result.env;
-          test-causal-conv1d-py313-cu128 = testCausalCu128Result.env;
-          test-all-py313-cu128           = testAllCu128Result.env;
+            # Test environments – py313 + cu128
+            test-torch-py313-cu128                     = testTorchCu128Result.env;
+            test-causal-conv1d-py313-cu128             = testCausalCu128Result.env;
+            test-causal-conv1d-from-source-py313-cu128 = testCausalCu128FromSourceResult.env;
+            test-all-py313-cu128                       = testAllCu128Result.env;
+          };
+
+          devShells = {
+            # Dev shell for working on this Nix project (linters, LSPs, etc.)
+            default = develop.makeShell {
+              pascal                   = false;
+              deploymentPythonPackages = _pascal: _python-pkgs: [];
+              deploymentPackages       = [];
+            };
+
+            # Dev shells for the concrete test environments – these expose
+            # python3 in PATH so `nix develop .#<name>` works for ad-hoc testing.
+            test-torch-py313-cu128                     = testTorchCu128Result.devShell;
+            test-causal-conv1d-py313-cu128             = testCausalCu128Result.devShell;
+            test-causal-conv1d-from-source-py313-cu128 = testCausalCu128FromSourceResult.devShell;
+            test-all-py313-cu128                       = testAllCu128Result.devShell;
+          };
         }
       );
+
+    in
+    {
+      # ── High-level derivations + concretise function ─────────────────────────
+      #
+      # System-independent output.  Consumers import these into their own flakes:
+      #
+      #   inputs.torch-flake.url = "github:…/nix-torch-bin-pascal";
+      #
+      #   result = torch-flake.pytorch-packages.concretise {
+      #     inherit pkgs;
+      #     packages      = with torch-flake.pytorch-packages; [ torch flash-attn ];
+      #     cudaVersion   = "cu126";
+      #     isPascal      = true;
+      #     pythonVersion = "313";
+      #   };
+      #
+      pytorch-packages = pytorchScope // {
+        concretise = import ./concretise;
+      };
+
+      # ── Concrete packages ────────────────────────────────────────────────────
+      packages  = nixpkgs.lib.mapAttrs (_: s: s.packages)  perSystem;
+
+      # ── Dev shells ───────────────────────────────────────────────────────────
+      devShells = nixpkgs.lib.mapAttrs (_: s: s.devShells) perSystem;
 
       # ── Test apps ────────────────────────────────────────────────────────────
       apps = forAllSystems ({ system, pkgs }:
@@ -197,62 +254,6 @@
         in
         {
           default = makeTestApp self.packages.${system}.default "default";
-        }
-      );
-
-      # ── NixOS module ─────────────────────────────────────────────────────────
-      nixosModules.default = { config, lib, pkgs, ... }: {
-        options.programs.torch-cuda = {
-          enable = lib.mkEnableOption "PyTorch with CUDA support";
-
-          cuda = lib.mkOption {
-            type        = lib.types.enum [ "12.6" "12.8" ];
-            default     = "12.6";
-            description = "CUDA toolkit version to use.";
-          };
-
-          pascal = lib.mkOption {
-            type        = lib.types.bool;
-            default     = false;
-            description = "Use Pascal-compatible CUDA packages (cuDNN 9.10.2, cuTENSOR 2.1.0).";
-          };
-
-          python = lib.mkOption {
-            type        = lib.types.enum [ "3.11" "3.12" "3.13" "3.14" ];
-            default     = "3.13";
-            description = "Python version to use.";
-          };
-        };
-
-        config = lib.mkIf config.programs.torch-cuda.enable {
-          environment.systemPackages = [
-            ((import ./concretise) {
-              inherit pkgs;
-              packages = [
-                pytorchScope.torch
-                pytorchScope."flash-attn"
-                pytorchScope."causal-conv1d"
-              ];
-              cuda     = config.programs.torch-cuda.cuda;
-              pascal   = config.programs.torch-cuda.pascal;
-              python   = config.programs.torch-cuda.python;
-            }).env
-          ];
-        };
-      };
-
-      # ── Dev shells ───────────────────────────────────────────────────────────
-      devShells = nixpkgs.lib.genAttrs systems (system:
-        let
-          pkgs    = import nixpkgs { inherit system; };
-          develop = developModule { inherit pkgs; };
-        in
-        {
-          default = develop.makeShell {
-            pascal                    = false;
-            deploymentPythonPackages  = _pascal: _python-pkgs: [];
-            deploymentPackages        = [];
-          };
         }
       );
     };

@@ -77,7 +77,7 @@ class TorchWheelSource:
         # We therefore capture the full ABI tag and reconstruct the name
         # using it for both positions (matching what PyPI and pip expect).
         #
-        ver_pat = version_filter or r"\d+\.\d+\.\d+"
+        ver_pat = version_filter or r"\d+\.\d+\.\d+(?:\.post\d+)?"
         cv = re.escape(cuda_variant)
         self._href_re = re.compile(
             r"/whl/"

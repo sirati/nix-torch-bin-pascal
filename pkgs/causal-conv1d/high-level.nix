@@ -33,6 +33,42 @@ assert hldHelpers.isHLD torch;
   # ── High-level dependencies ────────────────────────────────────────────────
   highLevelDeps = { inherit torch; };
 
+  # ── ABI compatibility check ────────────────────────────────────────────────
+  #
+  # Returns false when the pre-built wheel for `version` cannot be used with the
+  # resolved torch.  causal-conv1d wheels are compiled against a specific torch
+  # major.minor ABI; wheels built against torch <= 2.8 are broken at runtime
+  # against torch >= 2.9 (missing symbol c10::cuda::c10_cuda_check_implementation).
+  #
+  # When this returns false, concretise falls back to buildSource (if
+  # allowBuildingFromSource = true) or throws with a clear message.
+  #
+  # We always use cu12 here because causal-conv1d binary wheels only ship a
+  # single cu12 variant regardless of the specific CUDA 12.x sub-version.
+  canBuildBin = { resolvedDeps, version, cudaLabel, ... }:
+    let
+      torchVersion = resolvedDeps."torch".version;
+
+      # Extract "major.minor" from a full version string like "2.10.0" or "2.9.1".
+      # builtins.match returns a list of capture groups or null on no match.
+      mm = builtins.match "([0-9]+[.][0-9]+).*" torchVersion;
+      torchMajorMinor = builtins.elemAt mm 0;
+
+      # Load the compat keys that have pre-built wheels for this version.
+      versionData    = (import (./binary-hashes + "/v${version}.nix")).cu12;
+      availableCompat = builtins.attrNames versionData;
+
+      # Determine the highest compat key using Nix's built-in numeric version
+      # comparison (compareVersions handles "2.10" > "2.9" correctly).
+      sortedCompat = builtins.sort
+        (a: b: builtins.compareVersions a b < 0)
+        availableCompat;
+      maxCompat = builtins.elemAt sortedCompat (builtins.length sortedCompat - 1);
+    in
+    # The binary is compatible iff the resolved torch major.minor does not
+    # exceed the highest compat key in the hash file.
+    builtins.compareVersions torchMajorMinor maxCompat <= 0;
+
   # ── Build from pre-built wheel ─────────────────────────────────────────────
   #
   # Received from concretise:
@@ -50,6 +86,22 @@ assert hldHelpers.isHLD torch;
     };
 
   # ── Build from source ──────────────────────────────────────────────────────
+  #
+  # Called by concretise when canBuildBin returns false (pre-built wheel is
+  # ABI-incompatible with the resolved torch) and allowBuildingFromSource = true.
+  # Also called when no binary version exists at all (version may be non-null
+  # when the binary is ABI-incompatible, or null if no hash file exists).
   buildSource = { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }:
-    throw "causal-conv1d/high-level.nix: buildSource is not yet implemented";
+    let
+      v = if version != null then version else throw (
+        "causal-conv1d buildSource: version is null — no binary-hashes entry "
+        + "exists for cudaLabel '${cudaLabel}'.  Add a source-hashes.nix entry "
+        + "and a binary-hashes file for this version."
+      );
+    in
+    import ./override-source.nix {
+      inherit pkgs cudaPackages wrappers;
+      torch               = resolvedDeps."torch";
+      causalConv1dVersion = v;
+    };
 }

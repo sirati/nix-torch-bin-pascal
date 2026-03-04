@@ -20,3 +20,20 @@ we need to add information of the python defined dependencies
 i.e. if a pkg in python defines that torch = >=2.8 we need to translate that into a nix expression, best via another python script. further we need to be able to manually restrict this further, if we detect a future incompatibility
 
 for wheels this is also relevant, as wheels may have a direct binary based dependency on other wheels, which may become incompatible for future versions (i.e. already incompatible now, but was not known when that version was released.)
+
+in pkgs/default.nix I can see the following `  fix = f: let x = f x; in x;` i thought there is an existing fix provided by nix (maybe that is only provided by nixpkgs so we cannot use it)
+
+
+as part of the source process besides binary-hashes we need to have a source-hashes folder that contains whats needed for building a python packages from source, e.g. fetchFromGitHub requires the following attrset as argument
+```
+{
+    owner = "Dao-AILab";
+    repo = "causal-conv1d";
+    tag = "v${version}";
+    hash = "sha256-hFaF/oMdScDpdq+zq8WppWe9GONWppEEx2pIcnaALiI=";
+  };
+```
+so we need to probably rename generate-binary-hashes folder to generate-hashes, and then in new files add the code for generating source-hashes, based on tagged commits.
+
+
+causal-conv1d and flash-attn both have an override.nix that shares a lot of code, this is probably true for most pytorch dep. python packages. that code should go into a shared file outside of the pkgs folder.

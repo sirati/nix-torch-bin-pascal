@@ -1,10 +1,305 @@
 # Refactor Implementation Notes
 
-## Status: steps 1–7c complete + pkgs/ refactor complete + HLD type + hldHelpers injection complete
+## Status: steps 1–7c complete + pkgs/ refactor complete + HLD type + hldHelpers injection complete + preferBin→allowBuildingFromSource + nvidia-container key naming + canBuildBin + causal-conv1d buildSource + devShell fix + wheel-helpers extraction + generate-hashes rename + source-hashes folder + combined binary+source generator
 
 ---
 
-## HLD type + hldHelpers injection (last session)
+## This session
+
+### devShell fix: `python3` in PATH for test environments
+
+Added `devShell` attribute to the `concretise` return value (`concretise/default.nix`):
+
+```
+devShell = pkgs.mkShell { packages = [ env ]; };
+```
+
+`pkgs.mkShell` adds `packages` as `nativeBuildInputs`, so `nix develop` on the
+resulting shell puts `$out/bin/python3` (from the `withPackages` env) in PATH.
+
+Restructured `flake.nix`: merged `packages` and `devShells` into a single
+`perSystem = forAllSystems (...)` binding that computes all test results once
+and exposes them under both outputs.  Avoids duplicating expensive let-bindings
+(CUDA package sets, concretise calls) across separate `genAttrs` invocations.
+
+New `devShells` entries:
+- `test-torch-py313-cu128`
+- `test-causal-conv1d-py313-cu128`
+- `test-causal-conv1d-from-source-py313-cu128`
+- `test-all-py313-cu128`
+
+`nix develop .#devShells.x86_64-linux.test-causal-conv1d-py313-cu128` now has
+`python3` in PATH.
+
+### `wheel-helpers.nix`: shared binary-wheel build helper
+
+Extracted the duplicated compat-key selection + wheel-fetch + `buildPythonPackage`
+logic from `pkgs/causal-conv1d/override.nix` and `pkgs/flash-attn/override.nix`
+into a new top-level `wheel-helpers.nix`.
+
+`wheel-helpers.nix` exports a single function `buildBinWheel`:
+
+```
+buildBinWheel {
+  pname            # Python package name
+  version          # Package version string
+  binaryHashesFile # Path to the v{version}.nix file
+  torch            # Resolved torch derivation
+  meta             # Nix meta attrset
+  cudaVersion      ? "cu12"
+  cxx11abi         ? "TRUE"
+  extraDependencies ? []
+  pythonImportsCheck ? null   # null → [ pname ]
+}
+```
+
+It imports `generate-binary-hashes/lib.nix` for platform detection, performs
+the compat-key selection (best key <= torchMajorMinor, descending), fetches the
+wheel with `pkgs.fetchurl`, and calls `buildPythonPackage { format = "wheel"; }`.
+
+Both override.nix files are now thin wrappers (~20 lines each) that just supply
+the package-specific fields.  The maxCompat error message is now unified: both
+packages get the "highest available compat key is X" hint in the throw.
+
+### `generate-binary-hashes/` → `generate-hashes/` rename
+
+Renamed the `generate-binary-hashes/` directory to `generate-hashes/` via
+`git mv`.  The directory now holds shared code for generating both binary
+hashes (pre-built wheels) and source hashes (GitHub fetchFromGitHub info),
+so the old name was misleading.
+
+Updated all references:
+- `wheel-helpers.nix` — `import ./generate-hashes/lib.nix`
+- `pkgs/torch/override-common.nix` — `import ../../generate-hashes/lib.nix`
+- `pkgs/{causal-conv1d,flash-attn,torch}/generate-hashes.py` — `sys.path` insert
+- `generate-hashes/lib.nix` — usage comment examples
+- `generate-hashes/source_github.py` — directory comment + User-Agent strings
+- `concretise/default.nix` — inline comment
+
+### Source-hashes folder + combined binary+source generator
+
+**Source-hashes format** — one file per version in a `source-hashes/` folder
+(mirrors `binary-hashes/`).  Each file is minimal:
+
+```
+# WARNING: Auto-generated file. Do not edit manually!
+{
+  rev  = "v1.6.0";
+  hash = "sha256-hFaF/…";
+}
+```
+
+`owner` and `repo` are emitted only when non-empty (i.e. when they differ
+from the package's well-known defaults).  The consuming Nix code supplies
+the defaults:
+
+```nix
+srcInfo  = import (./source-hashes + "/v${causalConv1dVersion}.nix");
+srcOwner = srcInfo.owner or "Dao-AILab";
+srcRepo  = srcInfo.repo  or "causal-conv1d";
+```
+
+**`generate-hashes/source_fetcher.py`** — shared module:
+- `SourceEntry(version, tag, hash, owner="", repo="")` dataclass
+- `fetch_github_source_hash(owner, repo, tag) -> str`
+  Runs `nix store prefetch-file --hash-type sha256 --unpack <github-tarball-url>`
+  and returns the SRI NAR hash expected by `fetchFromGitHub { hash = …; }`.
+- `source_hash_exists(output_dir, version) -> bool`
+  Returns True when `source-hashes/v{version}.nix` already exists on disk
+  (used to skip re-downloading).
+- `write_source_hash_file(output_dir, entry)`
+  Writes `v{version}.nix` into `output_dir` (creates dir if absent).
+
+**`generate-hashes/source_github.py`** — added module-level helpers:
+- `list_release_tags(repo, token=None, include_prereleases=False) -> list[str]`
+  Queries `GET /repos/{owner}/{repo}/releases` with pagination, returns tag
+  names newest-first.
+- `_api_headers_for_token` / `_api_get` extracted from the class so both the
+  class and `list_release_tags` share the same HTTP logic.
+
+**`pkgs/causal-conv1d/generate-hashes.py`** — rewritten as combined generator:
+- Default: fetches ALL releases via `list_release_tags`, processes each tag.
+- `--tag v1.x.y`: process a single specific tag (for incremental updates).
+- `--skip-source`: binary hashes only.
+- `--prereleases`: include pre-releases in the all-releases fetch.
+- Applies `deduplicate_post_versions` across ALL fetched wheel entries before
+  writing binary-hashes files.
+- `winning_tag_for_base_versions(tags)`: maps each base version to the
+  highest-post-number tag (using `parse_version_post` from `common.py`).
+- For each binary version without an existing source-hashes file, calls
+  `fetch_github_source_hash` and writes the file.
+
+**`pkgs/causal-conv1d/source-hashes/v1.6.0.nix`** — created with the known
+1.6.0 hash (sourced from nixpkgs).
+
+**Deleted**:
+- `pkgs/causal-conv1d/source-hashes.nix` (flat file replaced by folder)
+- `pkgs/causal-conv1d/generate-source-hashes.py` (merged into generate-hashes.py)
+
+**`pkgs/causal-conv1d/override-source.nix`** updated:
+- Loads from `./source-hashes + "/v${causalConv1dVersion}.nix"` (folder).
+- Supplies `srcOwner`/`srcRepo` defaults with `or` fallback.
+
+---
+
+## This session
+
+### `canBuildBin` optional HLD field + causal-conv1d `buildSource`
+
+#### Problem
+
+causal-conv1d 1.6.0 ships no pre-built wheels for torch >= 2.9.  The cu12
+compat keys stop at `"2.8"`.  When torch 2.9.x or 2.10.x was resolved,
+`concretise` still called `buildBin` (a binary version existed in the hash
+files) and `override.nix` silently fell back to the `"2.8"` compat wheel —
+ABI-broken at runtime (missing symbol
+`c10::cuda::c10_cuda_check_implementation`).
+
+#### Solution
+
+Three coordinated changes:
+
+**`pkgs/hld-type.nix`** — added `canBuildBin` as an optional field:
+```
+canBuildBin = { resolvedDeps, version, cudaLabel } -> bool
+```
+Default: `_: true` (always buildable from binary — existing packages unaffected).
+When it returns `false`, `concretise` treats the package as having no usable
+binary for the current combination.
+
+**`concretise/default.nix` `buildOne`** — added `binCompatible` check:
+- `binCompatible = version != null && hld.canBuildBin { inherit resolvedDeps version cudaLabel; }`
+- If `binCompatible` → `buildBin` (existing path)
+- Else if `allowBuildingFromSource` → `buildSource args` (version passed through, may be non-null)
+- Else → throw with clear message distinguishing "no version found" vs "ABI-incompatible"
+
+**`pkgs/causal-conv1d/high-level.nix`** — added `canBuildBin`:
+- Extracts `torchMajorMinor` from `resolvedDeps."torch".version` via `builtins.match`
+- Loads `binary-hashes/v${version}.nix` `.cu12`, reads compat keys, sorts with
+  `builtins.compareVersions`, finds `maxCompat`
+- Returns `builtins.compareVersions torchMajorMinor maxCompat <= 0`
+
+**`pkgs/causal-conv1d/override.nix`** — kept the belt-and-suspenders guard
+(throws if called directly with incompatible torch); updated message to
+indicate it is a safety net and that `concretise` normally routes via
+`canBuildBin` before `buildBin` is invoked.
+
+#### causal-conv1d `buildSource` implementation
+
+Two new files:
+
+**`pkgs/causal-conv1d/source-hashes.nix`** — maps version string to
+`fetchFromGitHub` arguments:
+```
+{ "1.6.0" = { owner = "Dao-AILab"; repo = "causal-conv1d";
+               rev = "v1.6.0";
+               hash = "sha256-hFaF/oMdScDpdq+zq8WppWe9GONWppEEx2pIcnaALiI="; }; }
+```
+Hash sourced from nixpkgs `pkgs/development/python-modules/causal-conv1d/default.nix`.
+
+**`pkgs/causal-conv1d/override-source.nix`** — `buildPythonPackage` derivation:
+- `src`: `fetchFromGitHub` via `source-hashes.nix`
+- `build-system`: `setuptools`, `pkgs.ninja`, `torch` (our binary torch)
+- `nativeBuildInputs`: `pkgs.which`, `cudaPackages.cuda_nvcc`, `wrappers`
+- `buildInputs`: `cuda_cudart`, `cuda_cccl`, `libcusparse`, `libcusolver`, `libcublas`
+- `env.CAUSAL_CONV1D_FORCE_BUILD = "TRUE"`
+- `env.CUDA_HOME = lib.getDev cudaPackages.cuda_nvcc`
+- `preConfigure`/`preBuild`: put `wrappers/bin` at front of PATH
+- `dependencies = [ torch ]`
+
+`high-level.nix` `buildSource` delegates to `override-source.nix`, passing
+`pkgs`, `cudaPackages`, `wrappers`, `torch = resolvedDeps."torch"`,
+`causalConv1dVersion = version` (throws if version is null).
+
+#### flake.nix test updates
+
+Tests that combined `torch = "2.10"` + causal-conv1d + `allowBuildingFromSource = false`
+were silently broken before (built an ABI-incompatible binary).  Updated:
+
+- `defaultResult` (cu126-pascal, all three packages) → `allowBuildingFromSource = true`
+- `testCausalCu128Result` → `torch = "2.8"`, `allowBuildingFromSource = false`
+  (explicitly tests the binary wheel path with the highest compatible torch series)
+- `testAllCu128Result` → `allowBuildingFromSource = true`
+- `testCausalCu128FromSourceResult` unchanged: `torch = "2.10"`,
+  `allowBuildingFromSource = true` (tests source build path)
+
+`nix flake check --no-build` passes with only the pre-existing warnings
+(dirty tree, unknown `pytorch-packages` output, app `meta` missing).
+
+
+---
+
+## This session
+
+### `preferBin` → mandatory `allowBuildingFromSource`
+
+`concretise/default.nix` interface change: removed the optional `preferBin ?
+true` argument and replaced it with mandatory `allowBuildingFromSource`.
+
+Semantics:
+- `allowBuildingFromSource = false` — fail at evaluation time if any package
+  in the build has no pre-built wheel (after applying any `versionConstraints`);
+  the error message names the package and, if constraints narrowed the version
+  list, shows both the constrained and unconstrained sets.
+- `allowBuildingFromSource = true` — fall back to `buildSource` when no
+  pre-built wheel is available.  Currently all `buildSource` implementations
+  throw "not yet implemented", so this only makes sense once buildSource lands.
+
+Internal changes:
+- `buildOne` now uses `version != null` (not `preferBin && version != null`) to
+  decide between bin and source paths.
+- `_checkBinAvailable` condition inverted to `allowBuildingFromSource || ...`.
+- All four `concretise` call-sites in `flake.nix` updated with
+  `allowBuildingFromSource = false`.
+
+### NixOS module removed from flake.nix
+
+The `nixosModules.default` block (options + config for `programs.torch-cuda`)
+was removed.  System-level integration is out of scope for this project.
+
+### `versionConstraints` mechanism added to `concretise/default.nix`
+
+`allVersionConstraints` and `applyVersionConstraints` helpers were added to
+`concretise/default.nix`.  They read `hld.versionConstraints or {}` from each
+HLD in the build and merge constraints by package name (taking the stricter
+bound when two HLDs constrain the same dep).  Constraints are applied inside
+`buildOne` before version selection, and inside `_checkBinAvailable`.
+
+`hld-type.nix` does **not** currently list `versionConstraints` in
+`fieldSpecs` (the field was intentionally left out after review — see
+immediate todos for rationale).  The concretise code reads `or {}` so it is
+safe and dormant until a genuine use-case is identified.
+
+### `normalize_torch_compat` + `sort_torch_compat_key` in common.py
+
+Added to `generate-binary-hashes/common.py`:
+
+- `normalize_torch_compat(s)` — detects NVIDIA container version strings in
+  YY.MM format (major >= 20) and prefixes them with `"nvidia-container-"` so
+  they are unambiguous vs real PyTorch version numbers.
+- `sort_torch_compat_key(k)` — sort key that places regular PyTorch versions
+  before nvidia-container versions; within each group, numeric ordering.
+
+Detection heuristic: `^\d{2}\.\d{2}$` with the major component >= 20.  Real
+PyTorch major versions will remain single-digit for the foreseeable future.
+
+`pkgs/causal-conv1d/generate-hashes.py` updated to import and use both
+functions: `normalize_torch_compat` is called on every parsed `torch_compat`
+value; `sort_torch_compat_key` is used as the `DimSpec.sort_key` for the
+`torchCompat` dimension.
+
+### cu13 keys renamed in `binary-hashes/v1.6.0.nix`
+
+All cu13 torch-compat keys in
+`pkgs/causal-conv1d/binary-hashes/v1.6.0.nix` were renamed from bare YY.MM
+strings (`"25.08"`, `"25.09"`, …, `"26.01"`) to
+`"nvidia-container-25.08"` etc., matching the output the updated
+`generate-hashes.py` would produce on a fresh run.  The section comment lines
+were also updated accordingly.
+
+---
+
+## HLD type + hldHelpers injection (previous session)
 
 `pkgs/hld-type.nix` (new file) exports `mkHLD`, a constructor/validator for
 HLD attrsets.  Required fields: `packageName`, `highLevelDeps`, `getVersions`,

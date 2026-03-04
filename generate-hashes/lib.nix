@@ -6,12 +6,12 @@
 # Usage
 # -----
 #   let
-#     binLib = import ../generate-binary-hashes/lib.nix { inherit pkgs; };
+#     binLib = import ../generate-hashes/lib.nix { inherit pkgs; };
 #   in
 #   # use binLib.pyVer, binLib.os, binLib.arch, binLib.versionLE, …
 #
 # Or with selective binding:
-#   inherit (import ../generate-binary-hashes/lib.nix { inherit pkgs; })
+#   inherit (import ../generate-hashes/lib.nix { inherit pkgs; })
 #     pyVer os arch versionLE versionLT;
 
 { pkgs }:

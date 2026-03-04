@@ -25,3 +25,6 @@ high-level derivation do not depend on anything but other high-level derivation.
 python-level derivations are created by the concretise function that resolves high-level derivation into  build derivation, and makes the specific instance of the python-level derivation depend on both its high-level derivation and concrete build derivation.
 
 the concretise function is always called by the end user. It can only be called with a set of high-level derivations, cuda version (or absense of cuda support), compiler set, required compute capability, and python version. If possible if a expression contains packages created via two calls to the concretise function this should be detected, and result is an early-fail.
+
+### Unsupported
+I do not plan to ever support building torch from sources. It would be possible to support linking to previous version of upstream that declared how to build torch from sources, and explicitly only support those.

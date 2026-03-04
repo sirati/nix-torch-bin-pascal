@@ -2,14 +2,19 @@
 #!nix-shell -i python3 -p python3 nix
 
 """
-Generate flash-attn/binary-hashes/v{version}.nix from a GitHub release tag.
+Generate flash-attn binary-hashes from GitHub releases.
 
-Run from the project root:
-  nix-shell flash-attn/generate-hashes.py [-- --tag v2.8.3]
+By default fetches ALL releases and produces:
+  - binary-hashes/v{version}.nix  (one per version, from wheel assets)
+
+Run from the project root or from within pkgs/flash-attn/:
+  nix-shell pkgs/flash-attn/generate-hashes.py
+  nix-shell pkgs/flash-attn/generate-hashes.py -- --tag v2.8.3
 
 Options:
-  --tag TAG      GitHub release tag to fetch (default: v2.8.3)
-  --token TOKEN  GitHub API token; also read from $GITHUB_TOKEN
+  --tag TAG        Process only this specific release tag instead of all releases.
+  --prereleases    Include pre-releases when fetching all releases.
+  --token TOKEN    GitHub API token (also read from $GITHUB_TOKEN).
 """
 
 import argparse
@@ -17,47 +22,43 @@ import os
 import re
 import sys
 
-# Make the shared generate-binary-hashes modules importable.
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "generate-binary-hashes"))
+# Make the shared generate-hashes modules importable.
+_GENERATE_HASHES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../..", "generate-hashes")
+sys.path.insert(0, _GENERATE_HASHES_DIR)
 
-from common import parse_wheel_platform, sort_version_key, sort_pyver_key
-from nix_writer import DimSpec, organize_wheels, write_binary_hashes_per_version
-from source_github import GithubReleasesSource
+from common import parse_wheel_platform, sort_version_key, sort_pyver_key, normalize_torch_compat, sort_torch_compat_key
+from nix_writer import DimSpec
+from github_release_runner import (
+    add_common_args,
+    collect_all_wheels,
+    resolve_tags,
+    run_binary_hashes,
+    strip_nix_shell_dashdash,
+    write_missing_digests,
+)
+from pkg_helpers import make_torch_binary_header_template, pkg_hash_dirs
 
 # ---------------------------------------------------------------------------
 # Package-specific configuration
 # ---------------------------------------------------------------------------
 
-REPO        = "Dao-AILab/flash-attention"
-DEFAULT_TAG = "v2.8.3"
-OUTPUT_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "binary-hashes")
+GITHUB_REPO = "Dao-AILab/flash-attention"
 
-HEADER_TEMPLATE = """\
-# WARNING: Auto-generated file. Do not edit manually!
-# Source:  https://github.com/Dao-AILab/flash-attention/releases
-# To regenerate: nix-shell flash-attn/generate-hashes.py [-- --tag v{version}]
-#
-# Structure: cudaVersion -> torchCompat -> pyVer -> os -> arch
-#
-#   cudaVersion: CUDA major[minor] the wheel was compiled against (e.g. cu12, cu126).
-#   torchCompat: torch major.minor the wheel was compiled against.
-#   pyVer:       py39, py310, …  (CPython only; no free-threaded variants).
-#   os:          linux  (only Linux wheels provided as pre-built binaries)
-#   arch:        x86_64, aarch64
-#
-# Each leaf node contains the TRUE cxx11abi (new ABI) wheel data:
-#   { name, url, hash }
-# When a FALSE cxx11abi (pre-cxx11 ABI) wheel also exists it is embedded as:
-#   { name, url, hash, precx11abi = { name, url, hash }; }"""
+_HERE = os.path.dirname(os.path.abspath(__file__))
+BINARY_HASHES_DIR, _ = pkg_hash_dirs(_HERE)
 
-# Schema and dimensions are version-first so that organize_wheels produces
-# { version -> cudaVersion -> torchCompat -> ... }, which write_binary_hashes_per_version
-# can then split by version into one file each.
+HEADER_TEMPLATE = make_torch_binary_header_template(
+    github_repo=GITHUB_REPO,
+    pkg_path="pkgs/flash-attn",
+    has_source_hashes=False,
+    cuda_version_examples="cu12, cu126",
+)
+
 VERSION_SPEC = DimSpec("version", quoted=True, sort_key=sort_version_key)
 
 SCHEMA = [
     DimSpec("cudaVersion"),
-    DimSpec("torchCompat", quoted=True, sort_key=sort_version_key,
+    DimSpec("torchCompat", quoted=True, sort_key=sort_torch_compat_key,
             comment_fn=lambda k: f"── torch {k} {'─' * max(1, 60 - len(k))}"),
     DimSpec("pyVer",       sort_key=sort_pyver_key),
     DimSpec("os"),
@@ -87,15 +88,9 @@ _WHEEL_RE = re.compile(
 
 def parse_wheel(entry):
     """
-    Parse a GithubReleasesSource entry into its classification fields.
+    Parse a WheelEntry into its classification fields.
 
-    Returns (key, cxx11abi, path_dict, leaf_data) where:
-      - key       is the (cudaVersion, version, torchCompat, pyVer, os, arch) tuple
-      - cxx11abi  is "TRUE" or "FALSE"
-      - path_dict maps DIMENSIONS to their values (cxx11abi excluded)
-      - leaf_data is the {name, url, hash} dict
-
-    Returns None for assets that don't match the expected naming convention.
+    Returns (key, cxx11abi, path_dict, leaf_data), or None for non-matching assets.
     """
     m = _WHEEL_RE.match(entry.name)
     if m is None:
@@ -110,6 +105,7 @@ def parse_wheel(entry):
 
     pyver        = "py" + cpver[2:]       # "cp312" → "py312"
     cuda_version = "cu" + cuda_digits     # "12" → "cu12", "126" → "cu126"
+    torch_compat = normalize_torch_compat(torch_compat)
 
     key = (cuda_version, version, torch_compat, pyver, os_name, arch)
 
@@ -130,82 +126,21 @@ def parse_wheel(entry):
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Generate flash-attn binary-hashes.nix from a GitHub release tag."
+    strip_nix_shell_dashdash()
+
+    p = argparse.ArgumentParser(
+        description="Generate flash-attn binary-hashes from GitHub releases.",
     )
-    parser.add_argument(
-        "--tag",
-        default=DEFAULT_TAG,
-        help=f"GitHub release tag to fetch (default: {DEFAULT_TAG})",
-    )
-    parser.add_argument(
-        "--token",
-        default=os.environ.get("GITHUB_TOKEN"),
-        help="GitHub personal access token (also read from $GITHUB_TOKEN). "
-             "Optional but raises the API rate limit from 60 to 5000 req/h.",
-    )
-    args = parser.parse_args()
+    add_common_args(p)
+    args = p.parse_args()
 
-    print(f"Fetching release assets for {REPO} @ {args.tag} …")
-    source = GithubReleasesSource(
-        repo=REPO,
-        tag=args.tag,
-        token=args.token,
-    )
+    tags, too_old_tags = resolve_tags(GITHUB_REPO, args)
 
-    # Collect TRUE (new ABI) and FALSE (pre-cxx11 ABI) wheels separately.
-    true_wheels  = {}   # key → (path_dict, leaf_data)
-    false_wheels = {}   # key → leaf_data
+    all_raw, missing_tags = collect_all_wheels(GITHUB_REPO, tags, args.token, parse_wheel)
+    write_missing_digests(_HERE, missing_tags, too_old_tags)
 
-    skipped = 0
-    for entry in source.fetch_wheels():
-        parsed = parse_wheel(entry)
-        if parsed is None:
-            print(f"  SKIP  {entry.name}", file=sys.stderr)
-            skipped += 1
-            continue
-
-        key, cxx11abi, path_dict, leaf = parsed
-
-        if cxx11abi == "TRUE":
-            true_wheels[key] = (path_dict, leaf)
-        else:
-            false_wheels[key] = leaf
-
-    if not true_wheels:
-        print("No TRUE-ABI wheels matched — check the tag name.", file=sys.stderr)
-        sys.exit(1)
-
-    if skipped:
-        print(f"  ({skipped} asset(s) skipped due to unrecognised pattern)")
-
-    # Merge FALSE wheels into the corresponding TRUE wheel leaf as precx11abi.
-    entries = []
-    for key, (path_dict, leaf) in true_wheels.items():
-        if key in false_wheels:
-            leaf = dict(leaf)                        # shallow copy before mutating
-            leaf["precx11abi"] = false_wheels[key]
-        entries.append((path_dict, leaf))
-
-    # Warn about orphan FALSE-only wheels (no matching TRUE wheel).
-    for key in false_wheels:
-        if key not in true_wheels:
-            cuda_ver, ver, torch_compat, pyver, os_name, arch = key
-            print(
-                f"  WARNING: no TRUE-ABI wheel found for "
-                f"{ver}+{cuda_ver} torch{torch_compat} {pyver} {os_name}/{arch}; "
-                f"skipping FALSE-only wheel.",
-                file=sys.stderr,
-            )
-
-    organized = organize_wheels(entries, DIMENSIONS)
-    write_binary_hashes_per_version(
-        OUTPUT_DIR,
-        organized,
-        SCHEMA,
-        HEADER_TEMPLATE,
-        VERSION_SPEC,
-        prefix_attrs_fn=lambda version: {"_version": version},
+    run_binary_hashes(
+        all_raw, BINARY_HASHES_DIR, SCHEMA, DIMENSIONS, VERSION_SPEC, HEADER_TEMPLATE,
     )
 
 
