@@ -1,6 +1,59 @@
 # Refactor Implementation Notes
 
-## Status: steps 1–6 complete
+## Status: steps 1–7c complete + pkgs/ refactor complete
+
+---
+
+## pkgs/ refactor (this session)
+
+All three package directories moved under a new `pkgs/` subdirectory.
+`pkgs/default.nix` auto-discovers every subdirectory that contains a
+`high-level.nix` file and builds a lazily-resolved fixed-point scope using the
+`lib.fix` + `builtins.functionArgs` pattern so inter-HLD dependencies are
+wired automatically by name — no manual listing in `flake.nix`.
+
+`flake.nix` reduced to:
+```
+pytorchScope = import ./pkgs;
+pytorch-packages = pytorchScope // { concretise = import ./concretise; };
+```
+
+Adding a new package: create `pkgs/<name>/high-level.nix` as a function whose
+argument names match peer HLD attribute names.  Auto-discovered on the next
+evaluation.
+
+All relative paths inside moved files updated (`../` → `../../` for every
+cross-`pkgs/`-boundary import):
+- `high-level.nix` files  → `../../concretise/hld-helpers.nix`
+- `override*.nix` files   → `../../generate-binary-hashes/lib.nix`
+- `concretise/default.nix` → `../pkgs/torch/cuda-packages-pascal.nix`
+- `test-retry-wrappers.nix` → `./pkgs/torch/cuda-packages-pascal.nix`
+
+---
+
+## Step 7c – Cross-concretise mixing detection (COMPLETE)
+
+Each concrete package is stamped with
+`passthru.concretiseMarker = "cuda=…,pascal=…,python=…"` via a new `addMarker`
+helper applied inside `buildOne`.
+
+`checkedWithPackages` wraps `augmentedPython.withPackages`: it inspects every
+requested package for a `concretiseMarker` and throws a clear diagnostic if any
+marker differs from the current call's key.  Plain nixpkgs packages (no marker)
+are silently accepted.  `result.python` is now `checkedPython` so callers
+automatically get the mixing check.
+
+**Known limitation:** the check only fires when the caller uses
+`result.python.withPackages`.  A user who constructs a Python environment
+manually (e.g. `basePython.withPackages`) bypasses it.
+
+---
+
+## Compiler-version validation (COMPLETE)
+
+`concretise/default.nix` now asserts that `pkgs.gcc13.version` starts with
+`"13."`.  Fails early with a clear message if `pkgs.gcc13` is absent or has an
+unexpected major version.
 
 ---
 
@@ -113,32 +166,14 @@ that splits organized data by version key and writes one file per version.
 
 ---
 
-## Known limitations / follow-up work
-
-### Self-describing binary-hashes files (step 7a – planned)
-`torch/binary-hashes/cu126.nix` and `cu128.nix` are identified only by their filename.
-If renamed the content becomes ambiguous.  Plan: add `_cudaLabel = "cu126";` as a
-prefix attribute; `getVersionsFromCudaFiles` filters it out via
-`builtins.filter (k: k != "_cudaLabel") (builtins.attrNames ...)`.
-Same pattern for flash-attn / causal-conv1d: `_version = "2.8.3";` in each `v*.nix`.
-`nix_writer.py` needs a `prefix_attrs` parameter to emit these automatically.
-
-### Fail-early when no binary wheel exists (step 7b – planned)
-When `preferBin = true` and `getVersions` returns `[]`, `concretise` falls through to
-`buildSource` which immediately throws "not yet implemented".  The error is opaque.
-A pre-flight check in `concretise/default.nix` should throw a clear message before
-reaching `buildOne`.
-
-### Cross-concretise mixing detection (step 7c – planned)
-Packages concretised by two separate `concretise` calls can end up in the same Python
-environment, silently causing mismatched CUDA/Python/Pascal assumptions.  Plan: stamp
-each concrete package with an opaque `passthru.concretiseMarker` derivation encoding
-`{ cuda, pascal, python }` and check for marker equality at overlay time.
+### Known limitations / follow-up work
 
 ### `buildSource` not implemented
 All HLDs throw from `buildSource`.  No source-derivation layer exists yet.
+This is the main remaining piece of the four-derivation split described in
+`refactor_plan.md`.
 
-### No compiler-version validation
-`concretise` enforces GCC 13 via `pkgs.overrideCC` but does not verify that the nixpkgs
-CUDA package set was itself compiled with a compatible compiler.  A fail-early assert
-comparing `cudaPackages.stdenv.cc.version` against the allowed range would help.
+### 7c mixing check is best-effort
+`checkedWithPackages` only fires when callers use `result.python.withPackages`.
+A manually constructed Python environment (e.g. via `basePython.withPackages`)
+bypasses the check.  Document this in user-facing docs when buildSource lands.

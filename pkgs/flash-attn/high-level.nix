@@ -18,7 +18,7 @@
 { torch }:
 
 let
-  hldHelpers = import ../concretise/hld-helpers.nix;
+  hldHelpers = import ../../concretise/hld-helpers.nix;
 in
 
 # Fail early if the caller passed something other than a high-level derivation.

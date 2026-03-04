@@ -1,72 +1,62 @@
-# High-level derivation for PyTorch.
-#
-# getVersions is provided by the shared helper in concretise/hld-helpers.nix.
-# torch uses the per-CUDA-label layout: binary-hashes/{cudaLabel}.nix
+# High-level derivation for causal-conv1d.
 #
 # This is NOT a buildable derivation.  Import it and pass it (along with other
 # high-level derivations) to concretise.nix, which resolves the concrete build.
+#
+# causal-conv1d depends on torch at the high level.  When concretised, the
+# resolved concrete torch derivation is available via resolvedDeps."torch".
 #
 # Usage:
 #   let pp = inputs.this-flake.pytorch-packages; in
 #   pp.concretise {
 #     inherit pkgs;
-#     packages = with pp; [ torch ];
+#     packages = with pp; [ "causal-conv1d" ];  # torch is implied automatically
 #     python   = "3.13";
 #     cuda     = "12.6";
 #   };
 
-{ }:
+{ torch }:
 
 let
-  hldHelpers = import ../concretise/hld-helpers.nix;
+  hldHelpers = import ../../concretise/hld-helpers.nix;
 in
+
+# Fail early if the caller passed something other than a high-level derivation.
+assert torch._isHighLevelDerivation or false;
 
 {
   # ── Type marker ────────────────────────────────────────────────────────────
   _isHighLevelDerivation = true;
 
   # ── Identity ───────────────────────────────────────────────────────────────
-  packageName = "torch";
+  packageName = "causal-conv1d";
 
   # ── Binary availability ────────────────────────────────────────────────────
-  # torch uses per-CUDA-label files: binary-hashes/{cudaLabel}.nix
-  # Each file is a plain attrset keyed by version string.
-  getVersions = hldHelpers.getVersionsFromCudaFiles ./binary-hashes;
+  # causal-conv1d uses per-version files: binary-hashes/v{version}.nix
+  # Each file is a plain attrset keyed by cudaVersion label.
+  # The generic "cu12" key covers all CUDA 12.x variants.
+  getVersions = hldHelpers.getVersionsFromVersionFiles ./binary-hashes;
 
   # ── High-level dependencies ────────────────────────────────────────────────
-  # Torch has no high-level deps; other packages depend on it.
-  highLevelDeps = {};
+  highLevelDeps = { inherit torch; };
 
   # ── Build from pre-built wheel ─────────────────────────────────────────────
   #
   # Received from concretise:
   #   { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }
   #
-  # torch does not use resolvedDeps (it has no deps).
+  # causal-conv1d wheels are generic across CUDA 12.x, so we always use "cu12"
+  # as the cudaVersion passed to override.nix regardless of cudaLabel.
   buildBin = { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }:
-    let
-      binaryHashes = import (./binary-hashes + "/${cudaLabel}.nix");
-      base = import ./override-common.nix {
-        inherit pkgs cudaPackages binaryHashes;
-        torchVersion = version;
-      };
-    in
-    # Inject retry wrappers so transient CUDA toolchain failures are retried
-    # automatically.  Safe for wheel-only installs (wrappers go into PATH but
-    # are never invoked if there is no compilation step).
-    base.overrideAttrs (old: {
-      nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ wrappers ];
-      preConfigure = ''
-        export PATH="${wrappers}/bin:$PATH"
-        ${old.preConfigure or ""}
-      '';
-      preBuild = ''
-        export PATH="${wrappers}/bin:$PATH"
-        ${old.preBuild or ""}
-      '';
-    });
+    import ./override.nix {
+      inherit pkgs;
+      torch               = resolvedDeps."torch";
+      causalConv1dVersion = version;
+      cudaVersion         = "cu12";
+      # cxx11abi defaults to "TRUE" in override.nix, matching standard pip wheels
+    };
 
   # ── Build from source ──────────────────────────────────────────────────────
   buildSource = { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }:
-    throw "torch/high-level.nix: buildSource is not yet implemented";
+    throw "causal-conv1d/high-level.nix: buildSource is not yet implemented";
 }

@@ -1,73 +1,97 @@
-# Steps 7a + 7b – COMPLETE
+# Steps 7a + 7b + 7c + pkgs/ refactor – COMPLETE
 
-All tasks from steps 7a and 7b are done and `nix flake check --no-build` passes cleanly.
+All tasks are done and `nix flake check --no-build` passes cleanly.
 
-## What was actually built
+---
+
+## pkgs/ refactor (this session)
+
+### What changed
+
+- `torch/`, `flash-attn/`, `causal-conv1d/` moved into a new `pkgs/` subdirectory.
+
+- `pkgs/default.nix` created: auto-discovers every subdirectory that contains a
+  `high-level.nix` and builds a lazily-resolved fixed-point scope so inter-package
+  dependencies are wired automatically by name (same pattern as `lib.makeScope` /
+  `lib.fix` + `callPackage`).  No manual HLD wiring in `flake.nix` anymore.
+
+- All relative paths inside moved files updated (`../` → `../../` for paths that
+  crossed the new `pkgs/` boundary):
+  - `pkgs/torch/high-level.nix`       – `../../concretise/hld-helpers.nix`
+  - `pkgs/torch/override-common.nix`  – `../../generate-binary-hashes/lib.nix`
+  - `pkgs/flash-attn/high-level.nix`  – `../../concretise/hld-helpers.nix`
+  - `pkgs/flash-attn/override.nix`    – `../../generate-binary-hashes/lib.nix`
+  - `pkgs/causal-conv1d/high-level.nix` – `../../concretise/hld-helpers.nix`
+  - `pkgs/causal-conv1d/override.nix` – `../../generate-binary-hashes/lib.nix`
+
+- `concretise/default.nix` – `../torch/cuda-packages-pascal.nix`
+  → `../pkgs/torch/cuda-packages-pascal.nix`
+
+- `test-retry-wrappers.nix` – same path update.
+
+- `flake.nix` – manual `torchHLD` / `flashAttnHLD` / `causalConv1dHLD` bindings
+  replaced with a single `pytorchScope = import ./pkgs;`.
+  `pytorch-packages` output is now `pytorchScope // { concretise = …; }`.
+  Path references to `./torch/cuda-packages-pascal.nix` updated to
+  `./pkgs/torch/cuda-packages-pascal.nix`.
+
+### Adding a new package
+
+Create `pkgs/<name>/high-level.nix` as a function whose argument names match
+other HLD attribute names in the scope.  `pkgs/default.nix` picks it up
+automatically on the next evaluation — no changes to `flake.nix` needed.
+
+---
+
+## Step 7c – Cross-concretise mixing detection (COMPLETE)
+
+### What was built
+
+- `concretise/default.nix`: each concrete package is stamped with
+  `passthru.concretiseMarker = "cuda=…,pascal=…,python=…"` via a new
+  `addMarker` helper (applied in `buildOne`).
+
+- `checkedWithPackages` wrapper replaces `augmentedPython.withPackages`.
+  When called, it inspects every requested package for a `concretiseMarker`
+  and throws a clear diagnostic if any marker differs from the current call's
+  marker.  Packages without a marker (plain nixpkgs packages like `numpy`)
+  are silently accepted.
+
+- `result.python` now returns `checkedPython` (the wrapped interpreter) so
+  callers automatically get the mixing check when they call
+  `result.python.withPackages (ps: [...])`.
+
+---
+
+## Compiler-version validation (COMPLETE)
+
+- `concretise/default.nix`: added `_checkCudaCompiler` assert (evaluated
+  before the return attrset).  Checks that `pkgs.gcc13.version` starts with
+  `"13."`.  Fails with a clear diagnostic if:
+  - `pkgs.gcc13` is absent from the provided nixpkgs instance, or
+  - its version major component is not 13.
+
+---
+
+## What was already built (steps 7a + 7b)
 
 ### 7a – Self-describing binary-hashes
 
-- `generate-binary-hashes/nix_writer.py`: added `prefix_attrs: dict[str, str] | None = None`
-  parameter to `write_binary_hashes_nix`; when provided the entries are emitted verbatim as
-  the *first* attributes inside the top-level attrset before any sorted wheel keys.
-  Added `prefix_attrs_fn: Callable[[str], dict[str, str]] | None = None` to
-  `write_binary_hashes_per_version`; it is called with the version string and the result
-  forwarded to each `write_binary_hashes_nix` call.
-
-- `torch/generate-hashes.py`: passes `prefix_attrs={"_cudaLabel": cuda_variant}` so future
-  regenerations automatically emit the self-identifying key.
-
-- `flash-attn/generate-hashes.py` + `causal-conv1d/generate-hashes.py`: pass
-  `prefix_attrs_fn=lambda version: {"_version": version}`.
-
-- Existing binary-hashes files patched in-place:
-  - `torch/binary-hashes/cu126.nix` → `_cudaLabel = "cu126";`
-  - `torch/binary-hashes/cu128.nix` → `_cudaLabel = "cu128";`
-  - `flash-attn/binary-hashes/v2.8.3.nix` → `_version = "2.8.3";`
-  - `causal-conv1d/binary-hashes/v1.6.0.nix` → `_version = "1.6.0";`
-
-- `concretise/hld-helpers.nix` – `getVersionsFromCudaFiles` now filters `_cudaLabel` via
-  `builtins.filter (k: k != "_cudaLabel") (builtins.attrNames ...)`.
-  `getVersionsFromVersionFiles` is unchanged because it only checks `hasAttr cudaLabel` (never
-  `attrNames`), so the new `_version` key does not affect it.
+- `generate-binary-hashes/nix_writer.py`: `prefix_attrs` / `prefix_attrs_fn` parameters.
+- `torch/generate-hashes.py`: emits `_cudaLabel`.
+- `flash-attn/generate-hashes.py` + `causal-conv1d/generate-hashes.py`: emit `_version`.
+- Existing binary-hashes files patched with self-identifying keys.
+- `concretise/hld-helpers.nix`: filters `_cudaLabel` in `getVersionsFromCudaFiles`.
 
 ### 7b – Fail-early binary availability check
 
-- `concretise/default.nix`: added `_checkBinAvailable` which, when `preferBin = true`,
-  iterates `sortedHLDs` and throws a clear diagnostic if any package returns `[]` from
-  `getVersions cudaLabel`.  Asserted together with the other input checks before the return
-  attrset.
-
----
-
-## Verified: high-level definition style works end-to-end
-
-All checks below are pure `nix eval` (no build):
-
-| Scenario | Result |
-|---|---|
-| `torch` only, cu126, py313, pascal | `torch 2.10.0` → correct wheel selected |
-| `flash-attn` only (torch implied), cu126, py312 | both packages resolve; correct wheels |
-| All three pkgs, cu128, py312 | all three packages resolve; correct cu128 wheels |
-| `cuda = "11.8"` (invalid) | immediate error: *unsupported cuda '11.8'* |
-| HLD with no wheels + `preferBin = true` | immediate error: *no pre-built wheel for 'my-custom-pkg' with cudaLabel 'cu126'* |
-| HLD with no wheels + `preferBin = false` | `_checkBinAvailable` bypassed; lazy `buildSource not implemented` in result |
-
----
-
-# Step 7c – Cross-concretise mixing detection (deferred)
-
-**Status: deferred** — not blocking any current use-cases.
-
-Approach when needed: stamp each concrete package with a small `passthru.concretiseMarker`
-derivation (encoding `{ cuda, pascal, python }`) produced once per `concretise` call.
-The Python overlay can then check that all packages in a `withPackages` call share the
-same marker and throw otherwise.
+- `concretise/default.nix`: `_checkBinAvailable` pre-flight check throws a clear
+  diagnostic when `preferBin = true` and `getVersions` returns `[]`.
 
 ---
 
 # Next steps (longer term)
 
 - Implement `buildSource` / the four-derivation split described in `refactor_plan.md`
-- Add compiler-version validation inside `concretise` (assert `cudaPackages.stdenv.cc`
-  is within the GCC 12–13 range for CUDA 12.x)
-- 7c cross-concretise mixing detection (see above)
+- 7c marker check does not cover the case where the user bypasses `result.python`
+  and constructs a Python environment manually; document this limitation

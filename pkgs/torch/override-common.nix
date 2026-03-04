@@ -14,7 +14,7 @@
 { pkgs, cudaPackages, torchVersion, binaryHashes }:
 
 let
-  inherit (import ../generate-binary-hashes/lib.nix { inherit pkgs; })
+  inherit (import ../../generate-binary-hashes/lib.nix { inherit pkgs; })
     pyVer os arch;
 
   # Look up wheel data from the provided binary-hashes attrset

@@ -42,7 +42,7 @@
 let
   inherit (pkgs) lib;
 
-  inherit (import ../generate-binary-hashes/lib.nix { inherit pkgs; })
+  inherit (import ../../generate-binary-hashes/lib.nix { inherit pkgs; })
     pythonVersion pyVer os arch versionLE versionLT;
 
   # ── Platform validation ───────────────────────────────────────────────────

@@ -96,6 +96,40 @@ let
       + "Concrete derivations or plain nixpkgs packages are not accepted here."
     );
 
+  # ── Compiler-version validation ───────────────────────────────────────────
+
+  # CUDA 12.x requires GCC in the range [12, 13] (inclusive).  We always pin
+  # GCC 13 explicitly via pkgs.gcc13, so we verify:
+  #   (a) pkgs.gcc13 exists in the provided nixpkgs instance, and
+  #   (b) its version string actually starts with "13." so a future nixpkgs
+  #       rename/alias does not silently slip through.
+  #
+  # An incompatible host compiler causes sporadic runtime crashes that are
+  # very hard to diagnose, so we fail at evaluation time with a clear message.
+  _gcc13Version = pkgs.gcc13.version or null;
+
+  _checkCudaCompiler =
+    let
+      ver = _gcc13Version;
+      major = if ver != null
+              then lib.toInt (builtins.head (lib.strings.splitString "." ver))
+              else null;
+    in
+    (ver != null && major == 13)
+    || throw (
+      if ver == null
+      then
+        "concretise: pkgs.gcc13 is not available in the provided nixpkgs instance. "
+        + "CUDA 12.x requires GCC 13 for building. "
+        + "Please use a nixpkgs revision that provides gcc13."
+      else
+        "concretise: pkgs.gcc13 reports version '${ver}' (major ${toString major}), "
+        + "expected 13.x. "
+        + "CUDA 12.x requires GCC 13. "
+        + "Please check your nixpkgs revision."
+    );
+
+
   # ── Python interpreter ────────────────────────────────────────────────────
 
   # Map human-friendly "3.13" → pkgs.python313
@@ -127,7 +161,7 @@ let
     if !pascal then
       baseCudaPackages
     else
-      import ../torch/cuda-packages-pascal.nix {
+      import ../pkgs/torch/cuda-packages-pascal.nix {
         inherit pkgs cudaLabel;
         cudaPackages = baseCudaPackages;
       };
@@ -230,9 +264,28 @@ let
       )
     ) sortedHLDs;
 
+  # ── Concretise marker ─────────────────────────────────────────────────────
+
+  # An opaque string key that uniquely identifies the parameters of THIS
+  # concretise call.  Every concrete package is stamped with it via
+  # passthru.concretiseMarker so that the withPackages wrapper below can
+  # detect when packages from two separate concretise calls (with different
+  # CUDA / Python / Pascal settings) are mixed into a single Python environment.
+  concretiseMarkerKey =
+    "cuda=${cuda},pascal=${if pascal then "true" else "false"},python=${python}";
+
+  # Stamp a derivation with the marker.  Works for any package that supports
+  # overrideAttrs (all stdenv.mkDerivation / buildPythonPackage descendants).
+  addMarker = drv:
+    drv.overrideAttrs (old: {
+      passthru = (old.passthru or {}) // {
+        concretiseMarker = concretiseMarkerKey;
+      };
+    });
+
   concretePackages =
     lib.foldl'
-      (acc: hld: acc // { ${hld.packageName} = buildOne acc hld; })
+      (acc: hld: acc // { ${hld.packageName} = addMarker (buildOne acc hld); })
       {}
       sortedHLDs;
 
@@ -244,7 +297,45 @@ let
     packageOverrides = _self: _super: concretePackages;
   };
 
-  env = augmentedPython.withPackages (_ps: lib.attrValues concretePackages);
+  # ── withPackages mixing-detection wrapper ─────────────────────────────────
+
+  # Wraps augmentedPython.withPackages so that if the caller passes a package
+  # whose concretiseMarker differs from ours (i.e. it came from a different
+  # concretise call with different cuda/pascal/python settings), evaluation
+  # fails immediately with a clear diagnostic.
+  #
+  # The check is best-effort: packages without a concretiseMarker (e.g. plain
+  # nixpkgs packages like numpy) are silently accepted.
+  checkedWithPackages = f:
+    let
+      pkgSet        = augmentedPython.pkgs;
+      requestedPkgs = f pkgSet;
+
+      foreignPkgs = lib.filter
+        (p:
+          (p.passthru.concretiseMarker or null) != null &&
+          p.passthru.concretiseMarker != concretiseMarkerKey)
+        requestedPkgs;
+
+      _checkMixing =
+        foreignPkgs == []
+        || throw (
+          "concretise: mixing packages from different concretise calls is not allowed. "
+          + "The following packages were concretised with different settings "
+          + "(expected '${concretiseMarkerKey}'): "
+          + lib.concatStringsSep ", "
+              (map (p: "'${p.pname or p.name}' (${p.passthru.concretiseMarker})") foreignPkgs)
+          + ". Make sure all packages in withPackages come from the same concretise call."
+        );
+    in
+    assert _checkMixing;
+    augmentedPython.withPackages f;
+
+  # Expose the augmented Python with the mixing-detection wrapper in place of
+  # the stock withPackages function.
+  checkedPython = augmentedPython // { withPackages = checkedWithPackages; };
+
+  env = checkedPython.withPackages (_ps: lib.attrValues concretePackages);
 
 in
 
@@ -253,10 +344,11 @@ assert _checkPython;
 assert _checkCuda;
 assert _checkPackages;
 assert _checkAllHLD;
+assert _checkCudaCompiler;
 assert _checkBinAvailable;
 
 {
-  python   = augmentedPython;
+  python   = checkedPython;
   packages = concretePackages;
   inherit env;
 }

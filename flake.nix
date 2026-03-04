@@ -12,11 +12,11 @@
       developModule = import ./develop.nix;
 
       # ── High-level derivations (system-independent pure values) ─────────────
-      # These describe packages without committing to a concrete build.
-      # Pass them to concretise.nix to obtain actual derivations.
-      torchHLD        = import ./torch/high-level.nix { };
-      flashAttnHLD    = import ./flash-attn/high-level.nix    { torch = torchHLD; };
-      causalConv1dHLD = import ./causal-conv1d/high-level.nix { torch = torchHLD; };
+      # Loaded via pkgs/default.nix which auto-discovers every subdirectory
+      # containing a high-level.nix and wires inter-package dependencies using a
+      # fixed-point (lib.fix-style) so definition order does not matter.
+      pytorchScope = import ./pkgs;
+
 
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f {
         inherit system;
@@ -42,11 +42,8 @@
       #     pythonVersion = "313";
       #   };
       #
-      pytorch-packages = {
-        torch           = torchHLD;
-        "flash-attn"    = flashAttnHLD;
-        "causal-conv1d" = causalConv1dHLD;
-        concretise      = import ./concretise;
+      pytorch-packages = pytorchScope // {
+        concretise = import ./concretise;
       };
 
       # ── Concrete packages ────────────────────────────────────────────────────
@@ -54,12 +51,12 @@
         let
           # ── CUDA package sets ───────────────────────────────────────────────
 
-          cudaPackages_12_6_pascal_base = import ./torch/cuda-packages-pascal.nix {
+          cudaPackages_12_6_pascal_base = import ./pkgs/torch/cuda-packages-pascal.nix {
             inherit pkgs;
             cudaLabel    = "cu126";
             cudaPackages = pkgs.cudaPackages_12_6;
           };
-          cudaPackages_12_8_pascal_base = import ./torch/cuda-packages-pascal.nix {
+          cudaPackages_12_8_pascal_base = import ./pkgs/torch/cuda-packages-pascal.nix {
             inherit pkgs;
             cudaLabel    = "cu128";
             cudaPackages = pkgs.cudaPackages_12_8;
@@ -120,7 +117,11 @@
           # cu126-pascal, Python 3.13, all three packages.
           defaultResult = (import ./concretise) {
             inherit pkgs;
-            packages = [ torchHLD flashAttnHLD causalConv1dHLD ];
+            packages = [
+              pytorchScope.torch
+              pytorchScope."flash-attn"
+              pytorchScope."causal-conv1d"
+            ];
             python   = "3.13";
             cuda     = "12.6";
             pascal   = true;
@@ -191,7 +192,11 @@
           environment.systemPackages = [
             ((import ./concretise) {
               inherit pkgs;
-              packages = [ torchHLD flashAttnHLD causalConv1dHLD ];
+              packages = [
+                pytorchScope.torch
+                pytorchScope."flash-attn"
+                pytorchScope."causal-conv1d"
+              ];
               cuda     = config.programs.torch-cuda.cuda;
               pascal   = config.programs.torch-cuda.pascal;
               python   = config.programs.torch-cuda.python;
