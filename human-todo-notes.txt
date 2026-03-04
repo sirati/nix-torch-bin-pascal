@@ -1,0 +1,14 @@
+old binary-hashes.nix for github packages starts with
+```
+cudaVersion:
+builtins.getAttr cudaVersion {
+  cu12 = {
+```
+
+new ones however do:
+```
+{
+  cu12 = {
+```
+
+further for the torch binary-hashes files the currently do not include the information that is used to name their file. it probably is better to not have a information dependency on file structure.

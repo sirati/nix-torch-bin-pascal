@@ -1,14 +1,15 @@
 # WARNING: Auto-generated file. Do not edit manually!
-# Generated from: https://download.pytorch.org/whl/cu126/torch/
-# To regenerate: nix-shell torch-bin-cu126/generate-hashes.py
+# Source:  https://download.pytorch.org/whl/cu126/torch/
+# To regenerate: nix-shell torch/generate-hashes.py [-- --cuda cu126]
 #
 # Structure: version -> pythonVersion -> os -> arch
 #   pythonVersion: py310, py311, py312, py313, py313-freethreaded, py314, py314-freethreaded
 #   os: linux, windows
 #   arch: x86_64, aarch64
 
-version:
-builtins.getAttr version {
+{
+  _cudaLabel = "cu126";
+
   "2.10.0" = {
     py310 = {
       linux = {

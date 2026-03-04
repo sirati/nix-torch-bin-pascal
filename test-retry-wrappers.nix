@@ -6,8 +6,10 @@
 let
   retryWrappers = import ./nix-retry-wrapper { inherit pkgs; };
 
-  cudaPackages_12_6_pascal = import ./torch-cu126/cuda-packages-pascal.nix {
+  cudaPackages_12_6_pascal = import ./torch/cuda-packages-pascal.nix {
     inherit pkgs;
+    cudaLabel    = "cu126";
+    cudaPackages = pkgs.cudaPackages_12_6;
   };
 
   wrappers = retryWrappers.makeAllRetryWrappers pkgs.cudaPackages_12_6 {

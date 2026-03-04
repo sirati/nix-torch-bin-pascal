@@ -5,10 +5,10 @@
 #
 # The wheel selection is automatic:
 #   - Torch major.minor version is extracted from the `torch` argument.
-#   - If an exact compat key exists in binary-hashes.nix it is used directly;
-#     otherwise the highest available compat key that is <= the torch version
-#     is chosen as a fallback (flash-attn wheels are generally ABI-compatible
-#     with later torch minor releases of the same major version).
+#   - If an exact compat key exists in binary-hashes/v{version}.nix it is used
+#     directly; otherwise the highest available compat key that is <= the torch
+#     version is chosen as a fallback (flash-attn wheels are generally
+#     ABI-compatible with later torch minor releases of the same major version).
 #   - Python version and platform are detected from pkgs.python3 / stdenv.
 #
 # cxx11abi handling:
@@ -24,10 +24,10 @@
 #
 # Arguments:
 #   pkgs              - nixpkgs package set (pkgs.python3 must be the target Python)
-#   torch             - the torch (or torch-bin) derivation to depend on
+#   torch             - the torch derivation to depend on
 #   flashAttnVersion  - flash-attention version string (default: "2.8.3")
 #   cudaVersion       - CUDA version the wheel was compiled against (default: "cu12")
-#                       Used as the top-level key in binary-hashes.nix.
+#                       Used as the top-level key in binary-hashes/v{version}.nix.
 #                       Typical values: "cu12", "cu126", "cu128".
 #   cxx11abi          - "TRUE" or "FALSE" (default: "TRUE", matching standard
 #                       PyTorch pip wheels on Linux)
@@ -52,11 +52,11 @@ let
 
   # ── binary-hashes lookup ──────────────────────────────────────────────────
 
-  # binary-hashes.nix is a function: cudaVersion -> attrset keyed by flash-attn version.
-  # Each version value is an attrset keyed by torchCompat.
-  versionData = (import ./binary-hashes.nix cudaVersion).${flashAttnVersion};
+  # binary-hashes/v{version}.nix is a plain attrset keyed by cudaVersion.
+  # Each cudaVersion value is an attrset keyed by torchCompat.
+  versionData = (import (./binary-hashes + "/v${flashAttnVersion}.nix")).${cudaVersion};
 
-  # All torch compat keys present in binary-hashes.nix for this combination.
+  # All torch compat keys present in the hash file for this combination.
   availableCompat = builtins.attrNames versionData;   # e.g. [ "2.4" "2.5" … "2.9" ]
 
   # ── Torch version -> compat key resolution ────────────────────────────────

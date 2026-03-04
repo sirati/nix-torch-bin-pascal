@@ -2,12 +2,15 @@
 #!nix-shell -i python3 -p python3 nix
 
 """
-Generate torch-cu126/binary-hashes.nix from the PyTorch CUDA 12.6 wheel index.
+Generate torch/binary-hashes/cu{variant}.nix from the PyTorch wheel index.
 
 Run from the project root:
-  nix-shell torch-cu126/generate-hashes.py
+  nix-shell torch/generate-hashes.py                  # generate all variants
+  nix-shell torch/generate-hashes.py -- --cuda cu126  # only CUDA 12.6
+  nix-shell torch/generate-hashes.py -- --cuda cu128  # only CUDA 12.8
 """
 
+import argparse
 import os
 import re
 import sys
@@ -20,22 +23,34 @@ from nix_writer import DimSpec, organize_wheels, write_binary_hashes_nix
 from source_torch import TorchWheelSource
 
 # ---------------------------------------------------------------------------
-# Package-specific configuration
+# Per-variant configuration
 # ---------------------------------------------------------------------------
 
-CUDA_VARIANT    = "cu126"
-VERSION_FILTER  = r"2\.(?:9\.1|10\.0)"
-OUTPUT_PATH     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "binary-hashes.nix")
+VARIANTS = {
+    "cu126": {
+        "source_url": "https://download.pytorch.org/whl/cu126/torch/",
+    },
+    "cu128": {
+        "source_url": "https://download.pytorch.org/whl/cu128/torch/",
+    },
+}
 
-HEADER = """\
+VERSION_FILTER = r"2\.(?:9\.1|10\.0)"
+
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "binary-hashes")
+
+
+def make_header(cuda_variant: str, source_url: str) -> str:
+    return f"""\
 # WARNING: Auto-generated file. Do not edit manually!
-# Source:  https://download.pytorch.org/whl/cu126/torch/
-# To regenerate: nix-shell torch-cu126/generate-hashes.py
+# Source:  {source_url}
+# To regenerate: nix-shell torch/generate-hashes.py [-- --cuda {cuda_variant}]
 #
 # Structure: version -> pythonVersion -> os -> arch
 #   pythonVersion: py310, py311, py312, py313, py313-freethreaded, py314, py314-freethreaded
 #   os: linux, windows
 #   arch: x86_64, aarch64"""
+
 
 SCHEMA = [
     DimSpec("version", quoted=True, sort_key=sort_version_key),
@@ -50,10 +65,6 @@ DIMENSIONS = ["version", "pyVer", "os", "arch"]
 # ---------------------------------------------------------------------------
 # Wheel filename parser
 # ---------------------------------------------------------------------------
-
-# Matches the torch wheel href captured by TorchWheelSource, after it has
-# already extracted: version, abitag (e.g. "cp312" or "cp313t"), platform.
-# Here we further classify abitag and platform into the dimensions we need.
 
 def parse_wheel(entry) -> dict | None:
     """
@@ -84,7 +95,7 @@ def parse_wheel(entry) -> dict | None:
         return None
     os_name, arch = os_arch
 
-    is_ft = abitag.endswith("t")
+    is_ft  = abitag.endswith("t")
     pynum  = abitag[2:].rstrip("t")              # "cp312" → "312", "cp313t" → "313"
     py_key = f"py{pynum}-freethreaded" if is_ft else f"py{pynum}"
 
@@ -92,12 +103,15 @@ def parse_wheel(entry) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Per-variant generation
 # ---------------------------------------------------------------------------
 
-def main() -> None:
-    print(f"Fetching PyTorch {CUDA_VARIANT} wheel index …")
-    source = TorchWheelSource(CUDA_VARIANT, version_filter=VERSION_FILTER)
+def generate_variant(cuda_variant: str) -> None:
+    cfg = VARIANTS[cuda_variant]
+    output_path = os.path.join(OUTPUT_DIR, f"{cuda_variant}.nix")
+
+    print(f"Fetching PyTorch {cuda_variant} wheel index …")
+    source = TorchWheelSource(cuda_variant, version_filter=VERSION_FILTER)
 
     entries = []
     skipped = 0
@@ -110,14 +124,49 @@ def main() -> None:
         entries.append((path, entry.to_leaf()))
 
     if not entries:
-        print("No wheels matched — check VERSION_FILTER.", file=sys.stderr)
+        print(f"No wheels matched for {cuda_variant} — check VERSION_FILTER.", file=sys.stderr)
         sys.exit(1)
 
     if skipped:
         print(f"  ({skipped} wheel(s) skipped due to unrecognised format)")
 
     organized = organize_wheels(entries, DIMENSIONS)
-    write_binary_hashes_nix(OUTPUT_PATH, organized, SCHEMA, HEADER)
+    write_binary_hashes_nix(
+        output_path,
+        organized,
+        SCHEMA,
+        make_header(cuda_variant, cfg["source_url"]),
+        wrap_in_func=False,
+        prefix_attrs={"_cudaLabel": cuda_variant},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Generate torch binary-hashes .nix files from the PyTorch wheel index."
+    )
+    parser.add_argument(
+        "--cuda",
+        choices=list(VARIANTS.keys()),
+        action="append",
+        dest="cuda_variants",
+        metavar="VARIANT",
+        help=(
+            "CUDA variant to generate (e.g. cu126, cu128). "
+            "May be repeated. Defaults to all variants."
+        ),
+    )
+    args = parser.parse_args()
+
+    variants = args.cuda_variants or list(VARIANTS.keys())
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    for variant in variants:
+        generate_variant(variant)
 
 
 if __name__ == "__main__":

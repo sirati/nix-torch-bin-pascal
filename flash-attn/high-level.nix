@@ -17,6 +17,10 @@
 
 { torch }:
 
+let
+  hldHelpers = import ../concretise/hld-helpers.nix;
+in
+
 # Fail early if the caller passed something other than a high-level derivation.
 assert torch._isHighLevelDerivation or false;
 
@@ -25,16 +29,13 @@ assert torch._isHighLevelDerivation or false;
   _isHighLevelDerivation = true;
 
   # ── Identity ───────────────────────────────────────────────────────────────
-  packageName    = "flash-attn";
-  defaultVersion = "2.8.3";
+  packageName = "flash-attn";
 
   # ── Binary availability ────────────────────────────────────────────────────
-  # flash-attn pre-built wheels use a generic "cu12" label that covers all
-  # CUDA 12.x variants (cu126, cu128, …).  concretise will fall back to "cu12"
-  # automatically when the exact cudaLabel is not found here.
-  binVersions = {
-    cu12 = [ "2.8.3" ];
-  };
+  # flash-attn uses per-version files: binary-hashes/v{version}.nix
+  # Each file is a plain attrset keyed by cudaVersion label.
+  # The generic "cu12" key covers all CUDA 12.x variants.
+  getVersions = hldHelpers.getVersionsFromVersionFiles ./binary-hashes;
 
   # ── High-level dependencies ────────────────────────────────────────────────
   highLevelDeps = { inherit torch; };

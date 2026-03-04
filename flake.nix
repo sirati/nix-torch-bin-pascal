@@ -46,7 +46,7 @@
         torch           = torchHLD;
         "flash-attn"    = flashAttnHLD;
         "causal-conv1d" = causalConv1dHLD;
-        concretise      = import ./concretise.nix;
+        concretise      = import ./concretise;
       };
 
       # ── Concrete packages ────────────────────────────────────────────────────
@@ -54,11 +54,15 @@
         let
           # ── CUDA package sets ───────────────────────────────────────────────
 
-          cudaPackages_12_6_pascal_base = import ./torch-cu126/cuda-packages-pascal.nix {
+          cudaPackages_12_6_pascal_base = import ./torch/cuda-packages-pascal.nix {
             inherit pkgs;
+            cudaLabel    = "cu126";
+            cudaPackages = pkgs.cudaPackages_12_6;
           };
-          cudaPackages_12_8_pascal_base = import ./torch-cu128/cuda-packages-pascal.nix {
+          cudaPackages_12_8_pascal_base = import ./torch/cuda-packages-pascal.nix {
             inherit pkgs;
+            cudaLabel    = "cu128";
+            cudaPackages = pkgs.cudaPackages_12_8;
           };
 
           # ── Retry wrappers ──────────────────────────────────────────────────
@@ -114,7 +118,7 @@
 
           # ── Default concrete environment ────────────────────────────────────
           # cu126-pascal, Python 3.13, all three packages.
-          defaultResult = (import ./concretise.nix) {
+          defaultResult = (import ./concretise) {
             inherit pkgs;
             packages = [ torchHLD flashAttnHLD causalConv1dHLD ];
             python   = "3.13";
@@ -185,7 +189,7 @@
 
         config = lib.mkIf config.programs.torch-cuda.enable {
           environment.systemPackages = [
-            ((import ./concretise.nix) {
+            ((import ./concretise) {
               inherit pkgs;
               packages = [ torchHLD flashAttnHLD causalConv1dHLD ];
               cuda     = config.programs.torch-cuda.cuda;

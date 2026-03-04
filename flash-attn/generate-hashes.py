@@ -2,7 +2,7 @@
 #!nix-shell -i python3 -p python3 nix
 
 """
-Generate flash-attn/binary-hashes.nix from a GitHub release tag.
+Generate flash-attn/binary-hashes/v{version}.nix from a GitHub release tag.
 
 Run from the project root:
   nix-shell flash-attn/generate-hashes.py [-- --tag v2.8.3]
@@ -21,7 +21,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "generate-binary-hashes"))
 
 from common import parse_wheel_platform, sort_version_key, sort_pyver_key
-from nix_writer import DimSpec, organize_wheels, write_binary_hashes_nix
+from nix_writer import DimSpec, organize_wheels, write_binary_hashes_per_version
 from source_github import GithubReleasesSource
 
 # ---------------------------------------------------------------------------
@@ -30,17 +30,16 @@ from source_github import GithubReleasesSource
 
 REPO        = "Dao-AILab/flash-attention"
 DEFAULT_TAG = "v2.8.3"
-OUTPUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "binary-hashes.nix")
+OUTPUT_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "binary-hashes")
 
-HEADER = """\
+HEADER_TEMPLATE = """\
 # WARNING: Auto-generated file. Do not edit manually!
 # Source:  https://github.com/Dao-AILab/flash-attention/releases
-# To regenerate: nix-shell flash-attn/generate-hashes.py [-- --tag v2.8.3]
+# To regenerate: nix-shell flash-attn/generate-hashes.py [-- --tag v{version}]
 #
-# Structure: cudaVersion -> version -> torchCompat -> pyVer -> os -> arch
+# Structure: cudaVersion -> torchCompat -> pyVer -> os -> arch
 #
 #   cudaVersion: CUDA major[minor] the wheel was compiled against (e.g. cu12, cu126).
-#   version:     flash-attention release version.
 #   torchCompat: torch major.minor the wheel was compiled against.
 #   pyVer:       py39, py310, …  (CPython only; no free-threaded variants).
 #   os:          linux  (only Linux wheels provided as pre-built binaries)
@@ -51,9 +50,13 @@ HEADER = """\
 # When a FALSE cxx11abi (pre-cxx11 ABI) wheel also exists it is embedded as:
 #   { name, url, hash, precx11abi = { name, url, hash }; }"""
 
+# Schema and dimensions are version-first so that organize_wheels produces
+# { version -> cudaVersion -> torchCompat -> ... }, which write_binary_hashes_per_version
+# can then split by version into one file each.
+VERSION_SPEC = DimSpec("version", quoted=True, sort_key=sort_version_key)
+
 SCHEMA = [
     DimSpec("cudaVersion"),
-    DimSpec("version",     quoted=True, sort_key=sort_version_key),
     DimSpec("torchCompat", quoted=True, sort_key=sort_version_key,
             comment_fn=lambda k: f"── torch {k} {'─' * max(1, 60 - len(k))}"),
     DimSpec("pyVer",       sort_key=sort_pyver_key),
@@ -61,7 +64,7 @@ SCHEMA = [
     DimSpec("arch"),
 ]
 
-DIMENSIONS = ["cudaVersion", "version", "torchCompat", "pyVer", "os", "arch"]
+DIMENSIONS = ["version", "cudaVersion", "torchCompat", "pyVer", "os", "arch"]
 
 # Matches flash_attn wheel filenames released on GitHub, e.g.:
 #   flash_attn-2.8.3+cu12torch2.4cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
@@ -196,12 +199,13 @@ def main() -> None:
             )
 
     organized = organize_wheels(entries, DIMENSIONS)
-    write_binary_hashes_nix(
-        OUTPUT_PATH,
+    write_binary_hashes_per_version(
+        OUTPUT_DIR,
         organized,
         SCHEMA,
-        HEADER,
-        top_key_var="cudaVersion",
+        HEADER_TEMPLATE,
+        VERSION_SPEC,
+        prefix_attrs_fn=lambda version: {"_version": version},
     )
 
 

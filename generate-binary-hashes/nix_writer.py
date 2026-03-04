@@ -220,11 +220,14 @@ def write_binary_hashes_nix(
     schema: list[DimSpec],
     header: str,
     top_key_var: str = "version",
+    wrap_in_func: bool = True,
+    prefix_attrs: dict[str, str] | None = None,
 ) -> None:
     """
     Write a ``binary-hashes.nix`` file.
 
-    The file is a Nix expression of the form::
+    When *wrap_in_func* is ``True`` (the default) the file is a Nix expression
+    of the form::
 
         version:
         builtins.getAttr version {
@@ -232,8 +235,12 @@ def write_binary_hashes_nix(
           …
         }
 
-    where the top-level lambda argument (``version`` by default) indexes into
-    the outer ``builtins.getAttr`` call.
+    When *wrap_in_func* is ``False`` the file is a plain attrset::
+
+        {
+          "<key>" = { … };
+          …
+        }
 
     Parameters
     ----------
@@ -252,6 +259,26 @@ def write_binary_hashes_nix(
         automatically.
     top_key_var:
         Name of the Nix lambda argument (default ``"version"``).
+        Ignored when *wrap_in_func* is ``False``.
+    wrap_in_func:
+        When ``True`` (default) emits the ``version: builtins.getAttr …``
+        wrapper.  When ``False`` emits a plain ``{ … }`` attrset.
+    prefix_attrs:
+        Optional mapping of Nix attribute name → string value that is
+        emitted verbatim as the *first* attributes inside the top-level
+        attrset, before any of the sorted wheel-data keys.  Iteration
+        order of the dict is preserved.  Values are quoted as Nix string
+        literals.  Example::
+
+            prefix_attrs={"_cudaLabel": "cu126"}
+
+        produces::
+
+            {
+              _cudaLabel = "cu126";
+              "2.10.0" = { … };
+              …
+            }
     """
     if not schema:
         raise ValueError("schema must contain at least one DimSpec")
@@ -263,8 +290,16 @@ def write_binary_hashes_nix(
 
     with open(output_path, "w") as f:
         f.write(header.rstrip("\n") + "\n\n")
-        f.write(f"{top_key_var}:\n")
-        f.write(f"builtins.getAttr {top_key_var} {{\n")
+
+        if wrap_in_func:
+            f.write(f"{top_key_var}:\n")
+            f.write(f"builtins.getAttr {top_key_var} {{\n")
+        else:
+            f.write("{\n")
+
+        if prefix_attrs:
+            for attr_name, attr_value in prefix_attrs.items():
+                f.write(f"  {attr_name} = \"{attr_value}\";\n")
 
         for key in _sorted_keys(organized, top_spec):
             if top_spec.comment_fn:
@@ -278,6 +313,70 @@ def write_binary_hashes_nix(
         f.write("}\n")
 
     print(f"Wrote {output_path}  ({total} wheel entries)")
+
+
+# ---------------------------------------------------------------------------
+# Per-version writer
+# ---------------------------------------------------------------------------
+
+def write_binary_hashes_per_version(
+    output_dir: str,
+    organized: dict,
+    schema: list[DimSpec],
+    header_template: str,
+    version_spec: DimSpec,
+    prefix_attrs_fn: "Callable[[str], dict[str, str]] | None" = None,
+) -> None:
+    """
+    Split *organized* by its outermost key (version) and write one plain
+    attrset binary-hashes file per version into *output_dir*.
+
+    File names: ``v{version}.nix``
+
+    Each file is written as a plain attrset (``wrap_in_func=False``).
+
+    Parameters
+    ----------
+    output_dir:
+        Directory where the per-version ``.nix`` files are written.
+        Created automatically if it does not exist.
+    organized:
+        Nested dict whose outermost keys are version strings, produced by
+        :func:`organize_wheels` with ``"version"`` as the first dimension.
+    schema:
+        One :class:`DimSpec` per nesting level **not** including the leading
+        version level (i.e. the schema that describes the content *inside*
+        each version block).
+    header_template:
+        Comment block written at the top of every file.  May contain a
+        ``{version}`` placeholder that is substituted with the version string.
+    version_spec:
+        The :class:`DimSpec` that corresponds to the version dimension
+        (used only for its ``sort_key`` when ordering the output files).
+    prefix_attrs_fn:
+        Optional callable ``(version: str) -> dict[str, str]``.  When
+        provided it is called for each version and the returned mapping is
+        forwarded as ``prefix_attrs`` to :func:`write_binary_hashes_nix`,
+        emitting self-identifying attributes (e.g. ``_version``) at the top
+        of every generated file.  Example::
+
+            prefix_attrs_fn=lambda version: {"_version": version}
+    """
+    import os as _os
+    _os.makedirs(output_dir, exist_ok=True)
+
+    keys = _sorted_keys(organized, version_spec)
+    for version in keys:
+        path = _os.path.join(output_dir, f"v{version}.nix")
+        header = header_template.format(version=version)
+        write_binary_hashes_nix(
+            path,
+            organized[version],
+            schema,
+            header,
+            wrap_in_func=False,
+            prefix_attrs=prefix_attrs_fn(version) if prefix_attrs_fn is not None else None,
+        )
 
 
 # ---------------------------------------------------------------------------

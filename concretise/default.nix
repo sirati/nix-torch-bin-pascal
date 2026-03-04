@@ -102,6 +102,10 @@ let
   pythonAttrName =
     "python" + lib.replaceStrings [ "." ] [ "" ] python;
 
+  # Nix-style Python version key used in binary-hashes attrsets, e.g. "py313".
+  # Matches the pyVer computed by generate-binary-hashes/lib.nix at build time.
+  pyVer = "py" + lib.replaceStrings [ "." ] [ "" ] python;
+
   basePython =
     pkgs.${pythonAttrName}
     or (throw "concretise: python ${python} not found in nixpkgs as '${pythonAttrName}'");
@@ -122,15 +126,16 @@ let
   cudaPackages =
     if !pascal then
       baseCudaPackages
-    else if cudaLabel == "cu126" then
-      import ./torch-cu126/cuda-packages-pascal.nix { inherit pkgs; }
     else
-      import ./torch-cu128/cuda-packages-pascal.nix { inherit pkgs; };
+      import ../torch/cuda-packages-pascal.nix {
+        inherit pkgs cudaLabel;
+        cudaPackages = baseCudaPackages;
+      };
 
   # ── Retry wrappers ────────────────────────────────────────────────────────
 
   # GCC 13 is the maximum compiler version supported by CUDA 12.x.
-  retryWrappersLib = import ./nix-retry-wrapper { inherit pkgs; gcc = pkgs.gcc13; };
+  retryWrappersLib = import ../nix-retry-wrapper { inherit pkgs; gcc = pkgs.gcc13; };
   wrappers = retryWrappersLib.makeAllRetryWrappers cudaPackages { maxAttempts = 3; };
 
   # ── pkgs variant for building ─────────────────────────────────────────────
@@ -183,36 +188,48 @@ let
     )
     else topoResult.result;
 
-  # ── CUDA key resolution per package ──────────────────────────────────────
-
-  # Try the exact cudaLabel ("cu126"/"cu128") first; fall back to the generic
-  # "cu12" label used by flash-attn and causal-conv1d.  Returns null if no
-  # binary key is available for this package / CUDA combination.
-  cudaKeyForBin = hld:
-    if      builtins.hasAttr cudaLabel hld.binVersions then cudaLabel
-    else if builtins.hasAttr "cu12"    hld.binVersions then "cu12"
-    else null;
-
   # ── Build one package ─────────────────────────────────────────────────────
 
   buildOne = resolvedDeps: hld:
     let
-      cuKey  = cudaKeyForBin hld;
-      useBin = preferBin && cuKey != null;
-      args   = {
+      availableVersions = hld.getVersions cudaLabel pyVer;
+      sortedVersions    = lib.sort lib.versionOlder availableVersions;
+      version           = if sortedVersions != [] then lib.last sortedVersions else null;
+      useBin            = preferBin && version != null;
+      args = {
         pkgs         = pkgsForBuild;
-        inherit cudaPackages wrappers cudaLabel resolvedDeps;
-        version      = hld.defaultVersion;
+        inherit cudaPackages wrappers cudaLabel resolvedDeps version;
       };
     in
     if useBin
       then hld.buildBin   args
-      else hld.buildSource args;
+      else hld.buildSource (args // { version = null; });
 
   # ── Strict fold over sorted packages ─────────────────────────────────────
 
   # Builds each package in dependency order, accumulating resolvedDeps so that
   # dependents (flash-attn, causal-conv1d) can reference already-built packages.
+  # ── Fail-early binary availability check ─────────────────────────────────
+
+  # When preferBin is true, every requested package must have at least one
+  # pre-built wheel for the requested cudaLabel.  Without this check the
+  # failure would only surface inside buildOne as an opaque "not yet
+  # implemented" throw from buildSource, which is hard to diagnose.
+  # When preferBin is true every requested package must have at least one
+  # pre-built wheel for the requested (cudaLabel, Python) combination.
+  # getVersions now filters by both axes, so an empty result here means either
+  # no CUDA wheel exists at all or no wheel exists for the requested Python
+  # version — both are surfaced with a clear diagnostic before reaching buildOne.
+  _checkBinAvailable =
+    !preferBin || builtins.all (hld:
+      hld.getVersions cudaLabel pyVer != []
+      || throw (
+        "concretise: no pre-built wheel available for '${hld.packageName}' "
+        + "with cudaLabel '${cudaLabel}' and Python ${python} (${pyVer}). "
+        + "Set preferBin = false to build from source (not yet implemented)."
+      )
+    ) sortedHLDs;
+
   concretePackages =
     lib.foldl'
       (acc: hld: acc // { ${hld.packageName} = buildOne acc hld; })
@@ -236,6 +253,7 @@ assert _checkPython;
 assert _checkCuda;
 assert _checkPackages;
 assert _checkAllHLD;
+assert _checkBinAvailable;
 
 {
   python   = augmentedPython;
