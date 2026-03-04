@@ -1,6 +1,6 @@
 # WARNING: Auto-generated file. Do not edit manually!
 # Source:  https://github.com/Dao-AILab/causal-conv1d/releases
-# To regenerate: nix-shell pkgs/causal-conv1d/generate-hashes.py [-- --tag v1.5.2]
+# To regenerate: nix-shell pkgs/causal-conv1d/generate-hashes.py [-- --skip-source --tag v1.5.2]
 #
 # Structure: cudaVersion -> torchCompat -> pyVer -> os -> arch
 #

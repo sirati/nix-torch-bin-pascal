@@ -1,0 +1,10 @@
+# Release tags skipped as too old (published year <= cutoff year).
+# These pre-date GitHub's digest feature and will never have API-provided
+# hashes.  They are intentionally not fetched.
+
+v0.2.6
+v0.2.5
+v0.2.4
+v0.2.3
+v0.2.2
+v0.2.1

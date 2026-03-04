@@ -1,6 +1,6 @@
 # WARNING: Auto-generated file. Do not edit manually!
 # Source:  https://github.com/Dao-AILab/flash-attention/releases
-# To regenerate: nix-shell flash-attn/generate-hashes.py [-- --tag v2.8.3]
+# To regenerate: nix-shell pkgs/flash-attn/generate-hashes.py [-- --tag v2.8.3]
 #
 # Structure: cudaVersion -> torchCompat -> pyVer -> os -> arch
 #
@@ -14,10 +14,11 @@
 #   { name, url, hash }
 # When a FALSE cxx11abi (pre-cxx11 ABI) wheel also exists it is embedded as:
 #   { name, url, hash, precx11abi = { name, url, hash }; }
+
 {
   _version = "2.8.3";
-
   cu12 = {
+
     # ── torch 2.4 ─────────────────────────────────────────────────────────
     "2.4" = {
       py39 = {

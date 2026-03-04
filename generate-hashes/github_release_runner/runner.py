@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import sys
 
-from common.versions import deduplicate_post_versions
+from common.versions import deduplicate_post_versions, parse_version_post
+from common.sort_keys import sort_version_key
 from nix_writer.schema import DimSpec
 from nix_writer.organise import organize_wheels
 from nix_writer.per_version import write_binary_hashes_per_version
+from source_fetcher import SourceEntry, fetch_github_source_hash, source_hash_exists, write_source_hash_file
 
 
 def run_binary_hashes(
@@ -78,3 +80,143 @@ def run_binary_hashes(
         prefix_attrs_fn=lambda version: {"_version": version},
     )
     return organized
+
+
+def _winning_tags_from_tags(tags: list[str]) -> dict[str, str]:
+    """Map each base version to its highest .postN tag."""
+    best: dict[str, tuple[int, str]] = {}
+    for tag in tags:
+        raw = tag.lstrip("v")
+        base, post_num = parse_version_post(raw)
+        existing = best.get(base)
+        if existing is None or post_num > existing[0]:
+            best[base] = (post_num, tag)
+    return {base: t for base, (_, t) in best.items()}
+
+
+def run_source_hashes(
+    tags: list[str],
+    source_hashes_dir: str,
+    github_repo: str,
+    args,
+) -> None:
+    """
+    Fetch and write per-version ``source-hashes/v{version}.nix`` files.
+
+    Skips immediately when ``args.skip_source`` is ``True``.
+    Skips individual versions whose file already exists on disk.
+
+    Parameters
+    ----------
+    tags:
+        Valid release tags as returned by :func:`~github_release_runner.tags.resolve_tags`.
+        Both bare (``v1.5.0``) and post-release (``v1.5.0.post8``) tags are
+        accepted; only the winning tag per base version is fetched.
+    source_hashes_dir:
+        Directory to write ``v{version}.nix`` files into.
+    github_repo:
+        ``owner/name`` slug — split to derive *owner* and *repo*.
+    args:
+        Parsed arguments namespace.  ``args.skip_source`` is honoured.
+    """
+    if getattr(args, "skip_source", False):
+        print("\nSkipping source-hash generation (--skip-source).", file=sys.stderr)
+        return
+
+    owner, repo = github_repo.split("/", 1)
+    winning_tags = _winning_tags_from_tags(tags)
+
+    print(file=sys.stderr)
+    for base_version in sorted(winning_tags.keys(), key=sort_version_key):
+        if source_hash_exists(source_hashes_dir, base_version):
+            print(
+                f"  source-hashes/v{base_version}.nix already exists — skipping.",
+                file=sys.stderr,
+            )
+            continue
+
+        winning_tag = winning_tags[base_version]
+        try:
+            sri_hash = fetch_github_source_hash(owner, repo, winning_tag)
+            write_source_hash_file(
+                source_hashes_dir,
+                SourceEntry(version=base_version, tag=winning_tag, hash=sri_hash),
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"  ERROR fetching source hash for {base_version} "
+                f"({winning_tag}): {exc}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+
+def run_all_hashes(
+    github_repo: str,
+    parse_wheel_fn,
+    binary_hashes_dir: str,
+    source_hashes_dir: str | None,
+    schema: list[DimSpec],
+    dimensions: list[str],
+    version_spec: DimSpec,
+    header_template: str,
+    here: str,
+    args,
+) -> None:
+    """
+    High-level entry point that runs the full hash-generation pipeline.
+
+    Handles all branching for ``--skip-source``, ``--source-only``, and the
+    normal (binary + source) flow, so per-package ``main()`` functions need
+    only call this with their constants and ``parse_wheel`` function.
+
+    Parameters
+    ----------
+    github_repo:
+        ``owner/name`` slug.
+    parse_wheel_fn:
+        Package-specific wheel parser — see
+        :func:`~github_release_runner.collector.collect_all_wheels`.
+    binary_hashes_dir:
+        Directory for ``binary-hashes/v{version}.nix`` output.
+    source_hashes_dir:
+        Directory for ``source-hashes/v{version}.nix`` output, or ``None``
+        for packages that have no source hashes.
+    schema, dimensions, version_spec, header_template:
+        Passed through to :func:`run_binary_hashes`.
+    here:
+        Package directory (``_HERE`` in each generator) — passed to
+        :func:`~github_release_runner.missing_digests.write_missing_digests`.
+    args:
+        Parsed argument namespace from :func:`~github_release_runner.args.add_common_args`.
+    """
+    from github_release_runner.tags import resolve_tags
+    from github_release_runner.collector import collect_all_wheels
+    from github_release_runner.missing_digests import write_missing_digests
+
+    source_only = getattr(args, "source_only", False)
+    skip_source = getattr(args, "skip_source", False)
+
+    if source_only and skip_source:
+        print("Error: --source-only and --skip-source are mutually exclusive.", file=sys.stderr)
+        sys.exit(1)
+
+    if source_only and source_hashes_dir is None:
+        print("Error: --source-only is not supported for this package (no source hashes).", file=sys.stderr)
+        sys.exit(1)
+
+    tags, too_old_tags = resolve_tags(github_repo, args)
+
+    if source_only:
+        # Do not touch missing-digests.txt here — we fetched no wheels so we
+        # have no new information about missing digests.  Any existing file
+        # from a previous binary run must be preserved as-is.
+        run_source_hashes(tags, source_hashes_dir, github_repo, args)
+        return
+
+    all_raw, missing_tags = collect_all_wheels(github_repo, tags, args.token, parse_wheel_fn)
+    write_missing_digests(here, missing_tags, too_old_tags)
+    run_binary_hashes(all_raw, binary_hashes_dir, schema, dimensions, version_spec, header_template)
+
+    if source_hashes_dir is not None:
+        run_source_hashes(tags, source_hashes_dir, github_repo, args)

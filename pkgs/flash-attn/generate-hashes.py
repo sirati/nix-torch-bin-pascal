@@ -10,9 +10,13 @@ By default fetches ALL releases and produces:
 Run from the project root or from within pkgs/flash-attn/:
   nix-shell pkgs/flash-attn/generate-hashes.py
   nix-shell pkgs/flash-attn/generate-hashes.py -- --tag v2.8.3
+  nix-shell pkgs/flash-attn/generate-hashes.py -- --skip-source
+  nix-shell pkgs/flash-attn/generate-hashes.py -- --source-only
 
 Options:
   --tag TAG        Process only this specific release tag instead of all releases.
+  --skip-source    Skip source-hash generation (binary hashes only).
+  --source-only    Only generate source hashes; skip binary-wheel hash generation.
   --prereleases    Include pre-releases when fetching all releases.
   --token TOKEN    GitHub API token (also read from $GITHUB_TOKEN).
 """
@@ -30,11 +34,8 @@ from common import parse_wheel_platform, sort_version_key, sort_pyver_key, norma
 from nix_writer import DimSpec
 from github_release_runner import (
     add_common_args,
-    collect_all_wheels,
-    resolve_tags,
-    run_binary_hashes,
+    run_all_hashes,
     strip_nix_shell_dashdash,
-    write_missing_digests,
 )
 from pkg_helpers import make_torch_binary_header_template, pkg_hash_dirs
 
@@ -45,12 +46,12 @@ from pkg_helpers import make_torch_binary_header_template, pkg_hash_dirs
 GITHUB_REPO = "Dao-AILab/flash-attention"
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-BINARY_HASHES_DIR, _ = pkg_hash_dirs(_HERE)
+BINARY_HASHES_DIR, SOURCE_HASHES_DIR = pkg_hash_dirs(_HERE)
 
 HEADER_TEMPLATE = make_torch_binary_header_template(
     github_repo=GITHUB_REPO,
     pkg_path="pkgs/flash-attn",
-    has_source_hashes=False,
+    has_source_hashes=True,
     cuda_version_examples="cu12, cu126",
 )
 
@@ -129,18 +130,16 @@ def main() -> None:
     strip_nix_shell_dashdash()
 
     p = argparse.ArgumentParser(
-        description="Generate flash-attn binary-hashes from GitHub releases.",
+        description="Generate flash-attn binary-hashes and source-hashes from GitHub releases.",
     )
     add_common_args(p)
     args = p.parse_args()
 
-    tags, too_old_tags = resolve_tags(GITHUB_REPO, args)
-
-    all_raw, missing_tags = collect_all_wheels(GITHUB_REPO, tags, args.token, parse_wheel)
-    write_missing_digests(_HERE, missing_tags, too_old_tags)
-
-    run_binary_hashes(
-        all_raw, BINARY_HASHES_DIR, SCHEMA, DIMENSIONS, VERSION_SPEC, HEADER_TEMPLATE,
+    run_all_hashes(
+        GITHUB_REPO, parse_wheel,
+        BINARY_HASHES_DIR, SOURCE_HASHES_DIR,
+        SCHEMA, DIMENSIONS, VERSION_SPEC, HEADER_TEMPLATE,
+        _HERE, args,
     )
 
 

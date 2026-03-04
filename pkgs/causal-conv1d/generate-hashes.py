@@ -14,10 +14,12 @@ Run from the project root or from within pkgs/causal-conv1d/:
   nix-shell pkgs/causal-conv1d/generate-hashes.py
   nix-shell pkgs/causal-conv1d/generate-hashes.py -- --tag v1.6.0
   nix-shell pkgs/causal-conv1d/generate-hashes.py -- --skip-source
+  nix-shell pkgs/causal-conv1d/generate-hashes.py -- --source-only
 
 Options:
   --tag TAG        Process only this specific release tag instead of all releases.
   --skip-source    Skip source-hash generation (binary hashes only).
+  --source-only    Only generate source hashes; skip binary-wheel hash generation.
   --prereleases    Include pre-releases when fetching all releases.
   --token TOKEN    GitHub API token (also read from $GITHUB_TOKEN).
 """
@@ -41,28 +43,16 @@ from common import (
 from nix_writer import DimSpec
 from github_release_runner import (
     add_common_args,
-    collect_all_wheels,
-    resolve_tags,
-    run_binary_hashes,
+    run_all_hashes,
     strip_nix_shell_dashdash,
-    winning_tag_for_base_versions,
-    write_missing_digests,
 )
 from pkg_helpers import make_torch_binary_header_template, pkg_hash_dirs
-from source_fetcher import (
-    SourceEntry,
-    fetch_github_source_hash,
-    source_hash_exists,
-    write_source_hash_file,
-)
 
 # ---------------------------------------------------------------------------
 # Package-specific configuration
 # ---------------------------------------------------------------------------
 
 GITHUB_REPO = "Dao-AILab/causal-conv1d"
-OWNER       = "Dao-AILab"
-REPO        = "causal-conv1d"
 
 _HERE             = os.path.dirname(os.path.abspath(__file__))
 BINARY_HASHES_DIR, SOURCE_HASHES_DIR = pkg_hash_dirs(_HERE)
@@ -152,66 +142,14 @@ def main() -> None:
         description="Generate causal-conv1d binary-hashes and source-hashes.",
     )
     add_common_args(p)
-    p.add_argument(
-        "--skip-source",
-        action="store_true",
-        help="Skip source-hash generation (binary hashes only).",
-    )
     args = p.parse_args()
 
-    tags, too_old_tags = resolve_tags(GITHUB_REPO, args)
-
-    all_raw, missing_tags = collect_all_wheels(GITHUB_REPO, tags, args.token, parse_wheel)
-    write_missing_digests(_HERE, missing_tags, too_old_tags)
-
-    organized = run_binary_hashes(
-        all_raw, BINARY_HASHES_DIR, SCHEMA, DIMENSIONS, VERSION_SPEC, BINARY_HEADER_TEMPLATE,
+    run_all_hashes(
+        GITHUB_REPO, parse_wheel,
+        BINARY_HASHES_DIR, SOURCE_HASHES_DIR,
+        SCHEMA, DIMENSIONS, VERSION_SPEC, BINARY_HEADER_TEMPLATE,
+        _HERE, args,
     )
-
-    # ── Source hashes ─────────────────────────────────────────────────────────
-    if args.skip_source:
-        print("\nSkipping source-hash generation (--skip-source).", file=sys.stderr)
-        return
-
-    # Map base_version → winning tag (highest post release for that base).
-    winning_tags = winning_tag_for_base_versions(tags)
-
-    print(file=sys.stderr)
-    for base_version in sorted(organized.keys(), key=sort_version_key):
-        if source_hash_exists(SOURCE_HASHES_DIR, base_version):
-            print(
-                f"  source-hashes/v{base_version}.nix already exists — skipping.",
-                file=sys.stderr,
-            )
-            continue
-
-        winning_tag = winning_tags.get(base_version)
-        if winning_tag is None:
-            # Shouldn't normally happen — fall back to plain v{version}.
-            winning_tag = f"v{base_version}"
-            print(
-                f"  WARNING: no release tag found for {base_version}; "
-                f"using {winning_tag}.",
-                file=sys.stderr,
-            )
-
-        try:
-            sri_hash = fetch_github_source_hash(OWNER, REPO, winning_tag)
-            write_source_hash_file(
-                SOURCE_HASHES_DIR,
-                SourceEntry(
-                    version=base_version,
-                    tag=winning_tag,
-                    hash=sri_hash,
-                ),
-            )
-        except Exception as exc:  # noqa: BLE001
-            print(
-                f"  ERROR fetching source hash for {base_version} "
-                f"({winning_tag}): {exc}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
 
 
 if __name__ == "__main__":

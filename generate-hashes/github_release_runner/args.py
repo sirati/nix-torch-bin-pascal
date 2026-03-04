@@ -32,6 +32,13 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
         GitHub personal-access token.  Also read from ``$GITHUB_TOKEN``.
     ``--cutoff-year YEAR``
         Skip releases published in YEAR or earlier (default: 2022).
+    ``--skip-source``
+        Skip source-hash generation (binary hashes only).  Only relevant for
+        packages that produce source hashes; silently ignored for packages
+        that do not.
+    ``--source-only``
+        Only generate source hashes; skip binary-wheel hash generation.
+        Mutually exclusive with ``--skip-source``.
     """
     parser.add_argument(
         "--tag",
@@ -66,5 +73,23 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
             "Skip releases published in YEAR or earlier (default: 2022). "
             "These pre-date GitHub's digest feature and are recorded in "
             "missing-digests.txt as 'too old'. Use 0 to disable the filter."
+        ),
+    )
+    parser.add_argument(
+        "--skip-source",
+        dest="skip_source",
+        action="store_true",
+        help=(
+            "Skip source-hash generation (binary hashes only). "
+            "Only relevant for packages that also produce source hashes."
+        ),
+    )
+    parser.add_argument(
+        "--source-only",
+        dest="source_only",
+        action="store_true",
+        help=(
+            "Only generate source hashes; skip binary-wheel hash generation. "
+            "Cannot be combined with --skip-source."
         ),
     )

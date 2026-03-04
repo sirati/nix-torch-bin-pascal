@@ -39,6 +39,7 @@ the SRI string (``sha256-<base64>``).  Requires Nix ≥ 2.4.
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -116,13 +117,21 @@ def fetch_github_source_hash(owner: str, repo: str, tag: str) -> str:
                 "nix", "store", "prefetch-file",
                 "--hash-type", "sha256",
                 "--unpack",
+                "--json",
                 url,
             ],
             capture_output=True,
             text=True,
             check=True,
         )
-        sri = result.stdout.strip()
+        data = json.loads(result.stdout)
+        sri = data.get("hash", "")
+        if not sri:
+            raise RuntimeError(
+                f"`nix store prefetch-file --json` returned no hash for {url}.\n"
+                f"  stdout: {result.stdout!r}\n"
+                f"  stderr: {result.stderr.strip()}"
+            )
         print(f"    → {sri}", file=sys.stderr)
         return sri
     except subprocess.CalledProcessError as exc:
