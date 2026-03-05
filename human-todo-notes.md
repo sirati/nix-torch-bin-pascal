@@ -72,3 +72,35 @@ building '/nix/store/k7w5dmdlqs3gnr4pl6h5bhndqrdd4dw4-python3.13-flash-attention
 building '/nix/store/bh0r13v3vc5yavqckc5hhx37ir4fgrgm-python3.13-mamba-ssm-2.3.0.drv'...
 ```
 It would be great if build python packages via HDL contain in the store path the torch, cuda, and pascal version, as well as adding a -bin for wheel build ones.
+
+lets add test cases for cuda 12.6 and cuda 13.0
+
+concretise should support applying an overlay/override AFTER HDLs are solved but before python packages that no HDL depends on are resolved.  
+
+
+doing
+```
+torchPackages.concretise {
+          inherit pkgs;
+          mlPackages = with torchPackages; [ torch flash-attn mamba-ssm ];
+          python = "3.13";
+          cuda = "12.8";
+          torch = "2.10";
+          pascal = false;
+          allowBuildingFromSource = true;
+          extraPythonPackages =
+            ps: with ps; [
+              einops
+            ];
+        };
+```
+fails with
+```
+Last 5 log lines:
+> pkgs.buildEnv error: two given paths contain a conflicting subpath:
+>   `/nix/store/167inkjn2rh9q32shkg22gn85g41h9q9-python3.13-einops-0.8.1/lib/python3.13/site-packages/einops/__pycache__/_backends.cpython-313.opt-1.pyc' and
+>   `/nix/store/z5rpvp3n48xda8d112isiw7h4d2bqkhl-python3.13-einops-0.8.1/lib/python3.13/site-packages/einops/__pycache__/_backends.cpython-313.opt-1.pyc'
+> hint: this may be caused by two different versions of the same package in buildEnv's `paths` parameter
+> hint: `pkgs.nix-diff` can be used to compa
+```
+so that means the code detecting such dublications does not work yet.
