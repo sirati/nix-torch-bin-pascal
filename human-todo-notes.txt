@@ -37,3 +37,24 @@ so we need to probably rename generate-binary-hashes folder to generate-hashes, 
 
 
 causal-conv1d and flash-attn both have an override.nix that shares a lot of code, this is probably true for most pytorch dep. python packages. that code should go into a shared file outside of the pkgs folder.
+
+
+please stop using cuda12.6 in all examples. the current standard is cuda12.8, always use that.
+
+currently the error checking and messages for buildSource in all high-level.nix are the same more less. this shared code must be extracted into hld-helpers.nix
+
+
+
+The real current failure is **triton version conflict**:
+- `pkgs.python3Packages.triton` → 3.5.1 (nixpkgs)
+- torch 2.10.0 already propagates triton 3.6.0
+i.e. rn this is done manually in override-source:
+  dependencies = [
+    torch
+    causal-conv1d
+    pkgs.python3Packages.einops
+    pkgs.python3Packages.transformers
+    pkgs.python3Packages.triton
+  ];
+instead this needs to be handles via hdl and concretise. in an hdl we need to define which packages we depend on in an hld independent way. instead when the fix point could not resolve dependencies, we then fallback by a) checking that a python package exist with that name. b) during concretissation some of these may be set already via functions of hdls. if after that it still is not resolved we fallback on the existing one in the nixpkgs python pkgs.python3Packages.<package_name>, this was if we later add a new hdl for an existing pkgs.python3Packages.<package_name> then we do not need to adjust other hdls.
+Further as long as hdls define all such dependencies the hdl can then provide default behaviour for the override.nix and override-source.nix further reducing boilerplate. 

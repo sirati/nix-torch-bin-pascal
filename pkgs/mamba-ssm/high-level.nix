@@ -13,9 +13,9 @@
 #   let pp = inputs.this-flake.pytorch-packages; in
 #   pp.concretise {
 #     inherit pkgs;
-#     packages = with pp; [ "mamba-ssm" ];  # torch and causal-conv1d implied
+#     packages = with pp; [ mamba-ssm ];  # torch and causal-conv1d implied
 #     python   = "3.13";
-#     cuda     = "12.6";
+#     cuda     = "12.8";
 #   };
 
 { torch, causal-conv1d, hldHelpers }:
@@ -44,6 +44,7 @@ assert hldHelpers.isHLD causal-conv1d;
   # in the binary-hashes file (across all Python versions).  When torch is
   # strictly newer than the highest compat key we have wheels for, we fall back
   # to a source build.
+  # ### TODO ### this should not be manually impl here but use the shared code, compare with other high-level.nix and properly extract shared code
   canBuildBin = { resolvedDeps, version, cudaLabel, ... }:
     let
       torchVersion    = resolvedDeps."torch".version;

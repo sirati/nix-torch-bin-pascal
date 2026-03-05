@@ -45,6 +45,7 @@ assert hldHelpers.isHLD torch;
   #
   # We always use cu12 here because causal-conv1d binary wheels only ship a
   # single cu12 variant regardless of the specific CUDA 12.x sub-version.
+  # ### TODO ### this should not be manually impl here but use the shared code, compare with other high-level.nix and properly extract shared code
   canBuildBin = { resolvedDeps, version, cudaLabel, ... }:
     let
       torchVersion = resolvedDeps."torch".version;

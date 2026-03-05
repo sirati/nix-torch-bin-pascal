@@ -44,6 +44,7 @@ assert hldHelpers.isHLD torch;
   #
   # This ensures torch 2.10+ always triggers a source build, since the newest
   # flash-attn pre-built wheels only cover up to torch 2.9 compat.
+  # ### TODO ### this should not be manually impl here but use the shared code, compare with other high-level.nix and properly extract shared code
   canBuildBin = { resolvedDeps, version, cudaLabel, ... }:
     let
       torchVersion    = resolvedDeps."torch".version;
