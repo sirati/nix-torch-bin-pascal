@@ -13,7 +13,7 @@
 #   let pp = inputs.this-flake.pytorch-packages; in
 #   pp.concretise {
 #     inherit pkgs;
-#     packages = with pp; [ "flash-attn" ];  # torch is implied automatically
+#     mlPackages = with pp; [ "flash-attn" ];  # torch is implied automatically
 #     python   = "3.13";
 #     cuda     = "12.6";
 #   };
@@ -75,11 +75,11 @@ assert hldHelpers.isHLD torch;
   # ── Build from pre-built wheel ─────────────────────────────────────────────
   #
   # Received from concretise:
-  #   { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }
+  #   { pkgs, cudaPackages, cudaLabel, resolvedDeps, version }
   #
   # flash-attn wheels are generic across CUDA 12.x, so we always use "cu12"
   # as the cudaVersion passed to override.nix regardless of cudaLabel.
-  buildBin = { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }:
+  buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
     import ./override.nix {
       inherit pkgs;
       torch            = resolvedDeps."torch";
@@ -93,7 +93,7 @@ assert hldHelpers.isHLD torch;
   # Called by concretise when canBuildBin returns false (torch is newer than
   # the highest compat key in the binary-hashes file) and
   # allowBuildingFromSource = true.
-  buildSource = { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }:
+  buildSource = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
     let
       v = if version != null then version else throw (
         "flash-attn buildSource: version is null — no binary-hashes entry "
@@ -109,6 +109,7 @@ assert hldHelpers.isHLD torch;
       + "--source-only --tag v${v}"
     )
     else
+    # (import ../../nix-retry-wrapper/inject-wrappers.nix wrappers)  # re-enable wrappers
     import ./override-source.nix {
       inherit pkgs cudaPackages;
       torch            = resolvedDeps."torch";

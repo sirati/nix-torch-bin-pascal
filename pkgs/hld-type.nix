@@ -17,8 +17,8 @@
 #     packageName   = "my-pkg";
 #     highLevelDeps = { inherit torch; };
 #     getVersions   = hldHelpers.getVersionsFromVersionFiles ./binary-hashes;
-#     buildBin      = { pkgs, cudaPackages, wrappers, cudaLabel,
-#                       resolvedDeps, version }:
+#     buildBin      = { pkgs, cudaPackages, cudaLabel,
+#                       resolvedDeps, version, wrappers ? null }:
 #                     import ./override.nix { inherit pkgs; };
 #     buildSource   = { ... }:
 #                     throw "my-pkg/high-level.nix: buildSource not implemented";
@@ -46,13 +46,13 @@ let
     };
     buildBin = {
       description =
-        "function – { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }"
+        "function – { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }"
         + " -> derivation; build from a pre-built wheel";
     };
     buildSource = {
       description =
         "function – same args as buildBin -> derivation; build from source"
-        + " (throw when not yet implemented)";
+        + " (wrappers ? null; throw when not yet implemented)";
     };
     canBuildBin = {
       description =

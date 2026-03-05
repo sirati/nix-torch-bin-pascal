@@ -11,8 +11,6 @@
 #   torch             - the concrete torch derivation from resolvedDeps."torch"
 #   cudaPackages      - CUDA package set (already configured for Pascal or
 #                       vanilla by concretise)
-#   wrappers          - retry-wrapper derivation (nvcc/gcc wrapped with retry
-#                       logic); injected at the front of PATH during compilation
 #   flashAttnVersion  - version string to build, e.g. "2.8.3"
 
 { pkgs

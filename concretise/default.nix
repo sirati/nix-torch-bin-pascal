@@ -34,32 +34,48 @@
 #     # Specifying flash-attn is enough – torch is implied automatically.
 #     result = pp.concretise {
 #       inherit pkgs;
-#       python   = "3.13";
-#       cuda     = "12.6";
-#       pascal   = true;
-#       packages = with pp; [ "flash-attn" "causal-conv1d" ];
+#       python     = "3.13";
+#       cuda       = "12.6";
+#       pascal     = false;
+#       mlPackages = with pp; [ flash-attn causal-conv1d ];
 #     };
 #   in
 #   # Option A – use the ready-made environment directly
 #   result.env
 #
-#   # Option B – extend it with additional packages from nixpkgs
-#   result.python.withPackages (ps: [ ps.torch ps."flash-attn" ps.numpy ])
+#   # Option B – pass extra Python packages directly to concretise
+#   result = pp.concretise {
+#     …
+#     mlPackages          = with pp; [ flash-attn causal-conv1d ];
+#     extraPythonPackages = ps: [ ps.pandas ps.numpy ];
+#   };
+#   result.env   # already contains torch + flash-attn + causal-conv1d + pandas + numpy
 #
-#   # Option C – access individual concrete derivations
+#   # Option C – extend an existing result with more packages after the fact
+#   # extendEnv already includes all HLD-managed + extraPythonPackages; no re-listing needed.
+#   result.extendEnv (ps: [ ps.matplotlib ])
+#
+#   # Option D – access individual concrete derivations
 #   result.packages."torch"
 #   result.packages."flash-attn"
 #
 # ── Return value ──────────────────────────────────────────────────────────────
 #
 #   {
-#     python    # Python interpreter with concrete packages overlaid in its pkg set
-#     packages  # { packageName -> derivation }  – all resolved packages incl. deps
-#     env       # python.withPackages with every resolved package pre-installed
+#     python             # Python interpreter with concrete packages overlaid in its pkg set
+#     packages           # { packageName -> derivation }  – all resolved packages incl. deps
+#     env                # withPackages containing all HLD + extraPythonPackages
+#     extendEnv          # (ps: […]): new env adding more packages on top of env;
+#                        #   HLD packages and extraPythonPackages are included automatically
+#     devShell           # mkShell containing env
 #   }
 
 { pkgs
-, packages                # list of HLDs; transitive deps are collected automatically
+, mlPackages              # list of HLDs; transitive deps are collected automatically
+, extraPythonPackages ? _ps: []
+                          # withPackages-style function for additional nixpkgs Python
+                          # packages to include in env alongside the HLD packages,
+                          # e.g. extraPythonPackages = ps: [ ps.pandas ps.numpy ]
 , python                  # "3.11" | "3.12" | "3.13" | "3.14"
 , cuda                    # "12.6" | "12.8"
 , torch                   # required – major.minor torch series, e.g. "2.10"
@@ -67,7 +83,16 @@
                           # so this must be specified explicitly to avoid silently
                           # selecting an incompatible torch build.
 , pascal             ? false
-, allowBuildingFromSource  # required – true to allow source builds, false to fail early
+                          # Enable Pascal (sm_60/sm_61) GPU support (default: false).
+                          # WARNING: Pascal support is not validated per library –
+                          # setting pascal = true may cause build failures or silently
+                          # broken binaries for packages whose upstream wheels were not
+                          # compiled for sm_60.  Only set this if you know all requested
+                          # libraries support it.
+, allowBuildingFromSource  # required – true: fall back to a source build when no
+                          # pre-built wheel exists for the requested combination.
+                          # false: fail at evaluation time if any package lacks a wheel
+                          # (safe default – avoids surprise multi-hour compilations).
 }:
 
 let
@@ -102,13 +127,13 @@ let
     );
 
   _checkPackages =
-    builtins.isList packages && packages != []
-    || throw "concretise: 'packages' must be a non-empty list of high-level derivations";
+    builtins.isList mlPackages && mlPackages != []
+    || throw "concretise: 'mlPackages' must be a non-empty list of high-level derivations";
 
   _checkAllHLD =
-    builtins.all (p: p._isHighLevelDerivation or false) packages
+    builtins.all (p: p._isHighLevelDerivation or false) mlPackages
     || throw (
-      "concretise: every entry in 'packages' must be a high-level derivation "
+      "concretise: every entry in 'mlPackages' must be a high-level derivation "
       + "(imported from torch/high-level.nix, flash-attn/high-level.nix, etc.). "
       + "Concrete derivations or plain nixpkgs packages are not accepted here."
     );
@@ -183,11 +208,18 @@ let
         cudaPackages = baseCudaPackages;
       };
 
-  # ── Retry wrappers ────────────────────────────────────────────────────────
-
-  # GCC 13 is the maximum compiler version supported by CUDA 12.x.
-  retryWrappersLib = import ../nix-retry-wrapper { inherit pkgs; gcc = pkgs.gcc13; };
-  wrappers = retryWrappersLib.makeAllRetryWrappers cudaPackages { maxAttempts = 3; };
+  # ── Retry wrappers (currently disabled) ───────────────────────────────────
+  #
+  # The nix-retry-wrapper/ infrastructure is kept for potential future use
+  # (e.g. OOM avoidance, transient nvcc failure recovery).  It is not wired
+  # into the build pipeline right now because even a no-op wrapper derivation
+  # would change derivation input hashes compared to a plain build.
+  #
+  # To re-enable, uncomment the two lines below and add `wrappers` back to
+  # the `args` attrset in buildOne (search for "inherit cudaPackages").
+  #
+  # retryWrappersLib = import ../nix-retry-wrapper { inherit pkgs; gcc = pkgs.gcc13; };
+  # wrappers = retryWrappersLib.makeAllRetryWrappers cudaPackages { maxAttempts = 3; };
 
   # ── pkgs variant for building ─────────────────────────────────────────────
 
@@ -218,7 +250,7 @@ let
     in
     lib.foldl' go {} userPackages;
 
-  allHLDs = collectAll packages;
+  allHLDs = collectAll mlPackages;
 
   # ── Topological sort ─────────────────────────────────────────────────────
 
@@ -336,7 +368,8 @@ let
       version = sel.version;
       args = {
         pkgs = pkgsForBuild;
-        inherit cudaPackages wrappers cudaLabel resolvedDeps version;
+        inherit cudaPackages cudaLabel resolvedDeps version;
+        # inherit wrappers; # re-enable together with wrappers above
       };
       # canBuildBin is an optional HLD field (default: always true).
       # It lets a package signal that a discovered binary version is ABI-
@@ -489,7 +522,47 @@ let
   # the stock withPackages function.
   checkedPython = augmentedPython // { withPackages = checkedWithPackages; };
 
-  env = checkedPython.withPackages (_ps: lib.attrValues concretePackages);
+  # ── Extra-package collision guard ─────────────────────────────────────────
+
+  # Build a set of names that are owned by the HLD concretise pipeline so that
+  # extra packages supplied by the caller cannot shadow them.  We index by both
+  # the attrset key (HLD packageName, e.g. "flash-attn") and the derivation's
+  # own pname/name, whichever is available.
+  concreteNameSet =
+    let
+      byKey   = builtins.mapAttrs (_: _: true) concretePackages;
+      byPname = builtins.listToAttrs (
+        map (p: { name = p.pname or p.name; value = true; })
+          (lib.attrValues concretePackages)
+      );
+    in byKey // byPname;
+
+  # Drop any package from `extras` whose pname/name collides with a
+  # concretise-managed package.  Packages without a recognisable name attribute
+  # are passed through unchanged.
+  filterExtras = extras:
+    lib.filter (p:
+      let n = p.pname or (p.name or null);
+      in n == null || !(concreteNameSet ? ${n})
+    ) extras;
+
+  env = checkedPython.withPackages (ps:
+    lib.attrValues concretePackages ++ filterExtras (extraPythonPackages ps));
+
+  # Builds a new environment that contains all HLD-managed packages,
+  # extraPythonPackages, plus whatever the caller adds.  The caller only needs
+  # to list the *additional* packages beyond what was already passed to
+  # concretise; everything else is included automatically.
+  # Any package whose name collides with an HLD-managed one is silently dropped
+  # from the extras so the concretise-resolved version always wins.
+  #
+  # Usage:
+  #   result.extendEnv (ps: with ps; [ matplotlib scikit-learn ])
+  extendEnv = morePkgs:
+    checkedPython.withPackages (ps:
+      lib.attrValues concretePackages
+      ++ filterExtras (extraPythonPackages ps)
+      ++ filterExtras (morePkgs ps));
 
   devShell = pkgs.mkShell {
     packages = [ env ];
@@ -508,5 +581,5 @@ assert _checkBinAvailable;
 {
   python   = checkedPython;
   packages = concretePackages;
-  inherit env devShell;
+  inherit env devShell extendEnv;
 }

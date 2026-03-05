@@ -14,14 +14,11 @@
 #   torch                - the concrete torch derivation from resolvedDeps."torch"
 #   cudaPackages         - CUDA package set (already configured for Pascal or
 #                          vanilla by concretise)
-#   wrappers             - retry-wrapper derivation (nvcc/gcc wrapped with retry
-#                          logic); injected at the front of PATH during compilation
 #   causalConv1dVersion  - version string to build, e.g. "1.6.0"
 
 { pkgs
 , torch
 , cudaPackages
-, wrappers
 , causalConv1dVersion
 }:
 
@@ -47,26 +44,36 @@ pkgs.python3Packages.buildPythonPackage {
     inherit (srcInfo) rev hash;
   };
 
-  # Build-time Python/tool dependencies — mirrors the upstream nixpkgs
-  # causal-conv1d pattern exactly: torch goes in build-system so setup.py can
-  # `import torch` to discover include paths; cuda_nvcc belongs in buildInputs
-  # (not build-system) since it is a native tool, not a Python package.
+  # The upstream pyproject.toml lists torch under [build-system] requires.
+  # Our torch derivation is the real PyPI binary wheel whose dist-info carries
+  # every nvidia-* sub-package as a pip dependency.  pypa/build (even with
+  # --no-isolation) checks the declared build-system.requires transitively,
+  # finds the nvidia-* packages are not pip-installed in the Nix sandbox, and
+  # aborts with "ERROR Missing dependencies".
   #
-  # torch MUST be in build-system: without it, the PEP-517 build backend falls
-  # back to pip to satisfy the torch build-time requirement, which in turn tries
-  # to resolve all of torch's transitive nvidia-* deps from PyPI — failing inside
-  # the Nix sandbox because those packages are Nix-managed, not pip-installable.
+  # Fix: strip torch out of [build-system] requires so pypa/build never tries
+  # to verify its pip-level transitive deps.  Torch is still fully importable
+  # at build time via the `dependencies` propagatedBuildInput + --no-isolation.
+  postPatch = ''
+    substituteInPlace pyproject.toml \
+      --replace-fail ', "torch"' ""
+  '';
+
+  # Build-time Python/tool dependencies — mirrors upstream nixpkgs:
+  #   • python3Packages.ninja  – the Python ninja wheel that provides the
+  #     `ninja` binary inside the PEP-517 build environment.
+  #   • cuda_nvcc              – nvcc + CUDA toolkit headers; placed in
+  #     build-system so it is on PATH during compilation (mirrors flash-attn).
+  # torch is intentionally omitted here (see postPatch above); it is available
+  # at build time via `dependencies` + --no-isolation.
   build-system = [
     pkgs.python3Packages.setuptools
-    pkgs.ninja
-    torch
+    pkgs.python3Packages.ninja
+    cudaPackages.cuda_nvcc
   ];
 
   nativeBuildInputs = [
     pkgs.which
-    # wrappers shadows nvcc/gcc with retry-wrapped versions; placed first in
-    # PATH via preConfigure/preBuild so it takes precedence.
-    wrappers
   ];
 
   buildInputs = with cudaPackages; [
@@ -75,7 +82,6 @@ pkgs.python3Packages.buildPythonPackage {
     libcusparse   # cusparse.h
     libcusolver   # cusolverDn.h
     libcublas     # cublas_v2.h, -lcublas
-    cuda_nvcc     # nvcc compiler + CUDA toolkit headers (native build tool)
   ];
 
   # Runtime Python dependency: only torch is needed at import time.
@@ -90,16 +96,6 @@ pkgs.python3Packages.buildPythonPackage {
     # live.  lib.getDev extracts the "dev" output (headers + pkg-config).
     CUDA_HOME = "${lib.getDev cudaPackages.cuda_nvcc}";
   };
-
-  # Place retry wrappers at the very front of PATH so the wrapped nvcc/gcc are
-  # picked up before the bare versions that come from nativeBuildInputs.
-  preConfigure = ''
-    export PATH="${wrappers}/bin:$PATH"
-  '';
-
-  preBuild = ''
-    export PATH="${wrappers}/bin:$PATH"
-  '';
 
   # No upstream test suite that can run without a GPU.
   doCheck = false;

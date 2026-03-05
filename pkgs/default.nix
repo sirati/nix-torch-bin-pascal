@@ -40,6 +40,11 @@ let
   # Passes the result of f back into f as its argument.  Nix's laziness makes
   # this safe as long as there are no value-level cycles (only name-level
   # forward references).
+  #
+  # We define our own instead of using nixpkgs lib.fix because this file is a
+  # pure Nix expression that does not import nixpkgs — it is evaluated before
+  # any `pkgs` argument is available.  lib.fix is identical in semantics;
+  # there is no builtins.fix in the Nix evaluator itself.
   fix = f: let x = f x; in x;
 
   # ── HLD type definition ───────────────────────────────────────────────────

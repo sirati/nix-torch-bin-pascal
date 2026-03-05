@@ -13,7 +13,7 @@
 #   let pp = inputs.this-flake.pytorch-packages; in
 #   pp.concretise {
 #     inherit pkgs;
-#     packages = with pp; [ "causal-conv1d" ];  # torch is implied automatically
+#     mlPackages = with pp; [ "causal-conv1d" ];  # torch is implied automatically
 #     python   = "3.13";
 #     cuda     = "12.6";
 #   };
@@ -76,7 +76,7 @@ assert hldHelpers.isHLD torch;
   #
   # causal-conv1d wheels are generic across CUDA 12.x, so we always use "cu12"
   # as the cudaVersion passed to override.nix regardless of cudaLabel.
-  buildBin = { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }:
+  buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
     import ./override.nix {
       inherit pkgs;
       torch               = resolvedDeps."torch";
@@ -91,7 +91,7 @@ assert hldHelpers.isHLD torch;
   # ABI-incompatible with the resolved torch) and allowBuildingFromSource = true.
   # Also called when no binary version exists at all (version may be non-null
   # when the binary is ABI-incompatible, or null if no hash file exists).
-  buildSource = { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }:
+  buildSource = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
     let
       v = if version != null then version else throw (
         "causal-conv1d buildSource: version is null — no binary-hashes entry "
@@ -107,8 +107,9 @@ assert hldHelpers.isHLD torch;
       + "--source-only --tag v${v}"
     )
     else
+    # (import ../../nix-retry-wrapper/inject-wrappers.nix wrappers)  # re-enable wrappers
     import ./override-source.nix {
-      inherit pkgs cudaPackages wrappers;
+      inherit pkgs cudaPackages;
       torch               = resolvedDeps."torch";
       causalConv1dVersion = v;
     };

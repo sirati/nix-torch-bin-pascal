@@ -13,7 +13,7 @@
 #   let pp = inputs.this-flake.pytorch-packages; in
 #   pp.concretise {
 #     inherit pkgs;
-#     packages = with pp; [ torch ];
+#     mlPackages = with pp; [ torch ];
 #     python   = "3.13";
 #     cuda     = "12.6";
 #   };
@@ -33,10 +33,10 @@
   # ── Build from pre-built wheel ─────────────────────────────────────────────
   #
   # Received from concretise:
-  #   { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }
+  #   { pkgs, cudaPackages, cudaLabel, resolvedDeps, version }
   #
   # torch does not use resolvedDeps (it has no deps).
-  buildBin = { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }:
+  buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
     let
       binaryHashes = import (./binary-hashes + "/${cudaLabel}.nix");
       base = import ./override-common.nix {
@@ -44,22 +44,10 @@
         torchVersion = version;
       };
     in
-    # Inject retry wrappers so transient CUDA toolchain failures are retried
-    # automatically.  Safe for wheel-only installs (wrappers go into PATH but
-    # are never invoked if there is no compilation step).
-    base.overrideAttrs (old: {
-      nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ wrappers ];
-      preConfigure = ''
-        export PATH="${wrappers}/bin:$PATH"
-        ${old.preConfigure or ""}
-      '';
-      preBuild = ''
-        export PATH="${wrappers}/bin:$PATH"
-        ${old.preBuild or ""}
-      '';
-    });
+    # (import ../../nix-retry-wrapper/inject-wrappers.nix wrappers) base  # re-enable wrappers
+    base;
 
   # ── Build from source ──────────────────────────────────────────────────────
-  buildSource = { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }:
+  buildSource = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
     throw "torch/high-level.nix: buildSource is not yet implemented";
 }
