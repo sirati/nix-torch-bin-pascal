@@ -1,25 +1,3 @@
-## Shared override-source.nix boilerplate
-
-`causal-conv1d/override-source.nix`, `flash-attn/override-source.nix`, and `mamba-ssm/override-source.nix` share substantial structure:
-- `srcInfo` import pattern (`import (./source-hashes + "/v${version}.nix")`) with `owner`/`repo` fallbacks
-- `pyproject = true` + `pkgs.fetchFromGitHub` using `srcInfo.rev`/`srcInfo.hash`
-- `postPatch` removing torch from `[build-system] requires` (causal-conv1d and mamba-ssm; flash-attn does not need this)
-- identical `build-system` list (`setuptools`, `ninja`, `cuda_nvcc`)
-- identical `nativeBuildInputs` (`pkgs.which`)
-- identical `buildInputs` from `cudaPackages` (cuda-conv1d/mamba share the exact same list; flash-attn has one extra: `libcurand`)
-- `env` block setting `CUDA_HOME` and a per-package `FORCE_BUILD` env var
-- boilerplate `doCheck = false`, `pythonImportsCheck`, `meta`
-
-Extract a shared Nix helper (e.g. `source-build-helpers.nix` at the repo root or under `concretise/`) that provides a `buildSourcePackage` function taking:
-- `pname`, `version`, `srcInfo`, `fetchSubmodules ? false`
-- `torch`, `cudaPackages`
-- `extraBuildInputs ? []` (for flash-attn's `libcurand`)
-- `dependencies` (runtime Python deps beyond torch)
-- `forceBuildEnvVar` (e.g. `"CAUSAL_CONV1D_FORCE_BUILD"`)
-- `extraEnv ? {}`, `postPatch ? ""`, `meta`, `pythonImportsCheck`
-
-Each `override-source.nix` then becomes a ~20-line thin wrapper.
-
 ## HLD Python package dependency resolution
 
 Currently, packages like `einops`, `transformers`, and `triton` are hardcoded as `pkgs.python3Packages.<name>` directly inside `override-source.nix` and `override.nix`.  This causes version conflicts (e.g. `pkgs.python3Packages.triton` 3.5.1 vs torch 2.10's propagated triton 3.6.0) and requires editing override files whenever a new HLD is added for a formerly-nixpkgs package.
