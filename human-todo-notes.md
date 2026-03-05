@@ -58,3 +58,17 @@ i.e. rn this is done manually in override-source:
   ];
 instead this needs to be handles via hdl and concretise. in an hdl we need to define which packages we depend on in an hld independent way. instead when the fix point could not resolve dependencies, we then fallback by a) checking that a python package exist with that name. b) during concretissation some of these may be set already via functions of hdls. if after that it still is not resolved we fallback on the existing one in the nixpkgs python pkgs.python3Packages.<package_name>, this was if we later add a new hdl for an existing pkgs.python3Packages.<package_name> then we do not need to adjust other hdls.
 Further as long as hdls define all such dependencies the hdl can then provide default behaviour for the override.nix and override-source.nix further reducing boilerplate. 
+
+
+
+```
+these 5 derivations will be built:
+  /nix/store/k7w5dmdlqs3gnr4pl6h5bhndqrdd4dw4-python3.13-flash-attention-2.8.3.drv
+  /nix/store/7gpbaq0blmqb193nrvswngcb0pzc5b2r-python3-3.13.11-env.drv
+  /nix/store/bh0r13v3vc5yavqckc5hhx37ir4fgrgm-python3.13-mamba-ssm-2.3.0.drv
+  /nix/store/95xxba1xip7f140lw2qss5jmysqs3bb4-python3-3.13.11-env.drv
+  /nix/store/gbwj8nvlxad03sz7xqypwk214c2fyhkg-python3-3.13.11-env.drv
+building '/nix/store/k7w5dmdlqs3gnr4pl6h5bhndqrdd4dw4-python3.13-flash-attention-2.8.3.drv'...
+building '/nix/store/bh0r13v3vc5yavqckc5hhx37ir4fgrgm-python3.13-mamba-ssm-2.3.0.drv'...
+```
+It would be great if build python packages via HDL contain in the store path the torch, cuda, and pascal version, as well as adding a -bin for wheel build ones.

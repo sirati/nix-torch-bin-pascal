@@ -12,4 +12,4 @@ In order to make sure of the current way nixpkgs deals with python packages, ple
 
 never read files inside of /binary-hashes/ or /source-hashes/ directories. They do not contain any useful information and eat up context space.
 
-the ground trust of the goal is written in ./refactor_plan.md. The human also maintains a todo file for things that needs to be worked on: ./human-todo-notes.txt. do not modify these.
+the ground trust of the goal is written in ./refactor_plan.md. The human also maintains a todo file for things that needs to be worked on: ./human-todo-notes.md. do not modify these.

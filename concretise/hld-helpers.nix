@@ -1,5 +1,26 @@
 # Shared helpers for high-level derivations (HLDs).
 #
+# In addition to the version-resolution and ABI-check helpers, this file
+# provides two identity/overrideInfo helpers used by high-level.nix files:
+#
+#   github-release-tag
+#     Builds the standard GitHub releases changelog URL template.
+#     Usage in high-level.nix:
+#       mkChangelog = hldHelpers."github-release-tag" srcOwner srcRepo;
+#
+#   mkOverrideInfo
+#     Builds the standard mkOverrideInfo constructor function used by every
+#     buildBin / buildSource call.  Closes over the package identity fields
+#     so that neither override.nix nor override-source.nix needs to repeat them.
+#     Usage in high-level.nix:
+#       mkOverrideInfo = hldHelpers.mkOverrideInfo {
+#         inherit pname srcOwner srcRepo mkChangelog;
+#         nixpkgsAttr = packageName;   # or a custom attr name
+#       };
+#     Then in buildBin / buildSource:
+#       overrideInfo = mkOverrideInfo { inherit pkgs cudaPackages version resolvedDeps; };
+#
+#
 # This file provides reusable getVersions implementations for the two
 # binary-hashes directory layouts used across packages, plus a type-check
 # helper (isHLD) used both by high-level.nix dependency asserts and by
@@ -35,6 +56,72 @@
 # Both produce a curried function:  cudaLabel -> pyVer -> [ versionString ]
 
 {
+  # --------------------------------------------------------------------------
+  # github-release-tag
+  #
+  # Returns the standard GitHub releases changelog URL for a given package
+  # version.  Takes owner and repo as curried arguments; returns a function
+  # v -> url so it can be used directly as the mkChangelog field value:
+  #
+  #   mkChangelog = hldHelpers."github-release-tag" srcOwner srcRepo;
+  #
+  # The resulting function prepends "v" to the version string, matching the
+  # conventional GitHub release tag format (e.g. "v1.6.0").
+  # --------------------------------------------------------------------------
+  "github-release-tag" = owner: repo: v:
+    "https://github.com/${owner}/${repo}/releases/tag/v${v}";
+
+  # --------------------------------------------------------------------------
+  # mkOverrideInfo
+  #
+  # Factory that produces the mkOverrideInfo constructor function consumed by
+  # each package's override.nix and override-source.nix.  Takes the package
+  # identity fields as a named-argument attrset and returns a curried function:
+  #
+  #   mkOverrideInfo identityAttrs buildArgs -> overrideInfo attrset
+  #
+  # Identity fields (all required unless marked optional):
+  #   pname               – Python/PyPI package name
+  #   nixpkgsAttr         – attribute in pkgs.python3Packages (may equal pname)
+  #   srcOwner            – GitHub organisation or user
+  #   srcRepo             – GitHub repository name
+  #   mkChangelog         – version string → changelog URL function
+  #
+  # Optional identity fields (default to always-false functions):
+  #   isBinBuildBroken    – overrideInfo -> bool; when true the binary wheel
+  #                         derivation is marked meta.broken = true.  Default:
+  #                         _: false (never broken).
+  #   isSourceBuildBroken – overrideInfo -> bool; same for source builds.
+  #                         Default: _: false (never broken).
+  #
+  # Build args (all required, passed at build time from buildBin/buildSource):
+  #   pkgs          – nixpkgs package set
+  #   cudaPackages  – CUDA package set
+  #   version       – resolved version string
+  #   resolvedDeps  – attrset of resolved HLD dependency derivations
+  #
+  # The resulting overrideInfo attrset contains:
+  #   pkgs, cudaPackages, pname, srcOwner, srcRepo, version,
+  #   basePkg             (pkgs.python3Packages.${nixpkgsAttr} or null),
+  #   changelog           (mkChangelog version),
+  #   torch               (resolvedDeps.torch or null),
+  #   isBinBuildBroken    (propagated from identity; called with overrideInfo),
+  #   isSourceBuildBroken (propagated from identity; called with overrideInfo)
+  # --------------------------------------------------------------------------
+  mkOverrideInfo =
+    { pname, nixpkgsAttr, srcOwner, srcRepo, mkChangelog
+    , isBinBuildBroken    ? _: false
+    , isSourceBuildBroken ? _: false
+    }:
+    { pkgs, cudaPackages, version, resolvedDeps }:
+    {
+      inherit pkgs cudaPackages pname srcOwner srcRepo version;
+      inherit isBinBuildBroken isSourceBuildBroken;
+      basePkg   = pkgs.python3Packages.${nixpkgsAttr} or null;
+      changelog = mkChangelog version;
+      torch     = resolvedDeps.torch or null;
+    };
+
   # --------------------------------------------------------------------------
   # isHLD
   #

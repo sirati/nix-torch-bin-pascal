@@ -18,9 +18,37 @@
 #     cuda     = "12.8";
 #   };
 
-{ hldHelpers }:
+{ hldHelpers, packageName }:
 
+let
+  # ── Package identity ───────────────────────────────────────────────────────
+  # pname and nixpkgsAttr both equal packageName ("torch") and are therefore
+  # omitted from the returned attrset; hld-type.nix validate fills them in
+  # automatically.
+  # Torch binaries are distributed via download.pytorch.org, not GitHub
+  # releases, so origin-type = "torch-website".  mkChangelog and mkOverrideInfo
+  # are required for "torch-website" and must be provided explicitly here.
+  # buildBin does not currently use them; they are available for future
+  # buildSource use.
+  srcOwner    = "pytorch";
+  srcRepo     = "pytorch";
+  mkChangelog = hldHelpers."github-release-tag" srcOwner srcRepo;
+  mkOverrideInfo = hldHelpers.mkOverrideInfo {
+    pname       = packageName;
+    nixpkgsAttr = packageName;
+    inherit srcOwner srcRepo mkChangelog;
+  };
+
+in
 {
+  # ── Origin type ────────────────────────────────────────────────────────────
+  "origin-type" = "torch-website";
+
+  # ── Identity fields ────────────────────────────────────────────────────────
+  # pname and nixpkgsAttr are omitted (both equal packageName "torch");
+  # hld-type.nix validate fills them in automatically.
+  inherit srcOwner srcRepo mkChangelog mkOverrideInfo;
+
   # ── Binary availability ────────────────────────────────────────────────────
   # torch uses per-CUDA-label files: binary-hashes/{cudaLabel}.nix
   # Each file is a plain attrset keyed by version string.

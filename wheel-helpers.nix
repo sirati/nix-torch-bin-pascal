@@ -158,6 +158,14 @@
           description =
             "${baseMeta.description or pname} (pre-built wheel)";
           sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
+          # The upstream nixpkgs derivation may carry broken = true (e.g.
+          # because its nixpkgs build requires CUDA in a way nixpkgs cannot
+          # easily express).  Our pre-built wheel is a fully-functional
+          # replacement, so we default to broken = false here.
+          # HLDs can override this via the isBinBuildBroken field, which is
+          # a function overrideInfo -> bool — allowing fine-grained per-version
+          # or per-platform broken marking without disabling the whole package.
+          broken = (overrideInfo.isBinBuildBroken or (_: false)) overrideInfo;
         }
         // lib.optionalAttrs (changelog != null) { inherit changelog; }
         // extraMeta;

@@ -98,7 +98,8 @@ let
     builtins.listToAttrs (map (name: {
       inherit name;
       value = hldType.validate name
-        (callFromScope self (import (./. + "/${name}/high-level.nix")));
+        (callFromScope (self // { packageName = name; })
+          (import (./. + "/${name}/high-level.nix")));
     }) pkgDirNames)
   );
 

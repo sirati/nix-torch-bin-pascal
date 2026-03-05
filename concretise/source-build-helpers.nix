@@ -124,6 +124,14 @@
           description =
             "${baseMeta.description or pname} (built from source)";
           sourceProvenance = with lib.sourceTypes; [ fromSource ];
+          # The upstream nixpkgs derivation may carry broken = true (e.g.
+          # because its nixpkgs build requires CUDA in a way nixpkgs cannot
+          # easily express).  Our source build is a fully-functional
+          # replacement, so we default to broken = false here.
+          # HLDs can override this via the isSourceBuildBroken field, which is
+          # a function overrideInfo -> bool — allowing fine-grained per-version
+          # or per-platform broken marking without disabling the whole package.
+          broken = (overrideInfo.isSourceBuildBroken or (_: false)) overrideInfo;
         }
         // lib.optionalAttrs (changelog != null) { inherit changelog; }
         // extraMeta;

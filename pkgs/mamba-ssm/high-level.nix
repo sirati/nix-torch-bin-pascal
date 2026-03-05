@@ -7,7 +7,7 @@
 # concretised, the resolved concrete derivations are available via
 # resolvedDeps."torch" and resolvedDeps."causal-conv1d".
 #
-# hldHelpers is injected automatically by pkgs/default.nix.
+# hldHelpers and packageName are injected automatically by pkgs/default.nix.
 #
 # Usage:
 #   let pp = inputs.this-flake.pytorch-packages; in
@@ -18,7 +18,7 @@
 #     cuda     = "12.8";
 #   };
 
-{ torch, causal-conv1d, hldHelpers }:
+{ torch, causal-conv1d, hldHelpers, packageName }:
 
 # Fail early if the caller passed something other than high-level derivations.
 assert hldHelpers.isHLD torch;
@@ -26,37 +26,39 @@ assert hldHelpers.isHLD causal-conv1d;
 
 let
   # ── Package identity ───────────────────────────────────────────────────────
-  # Centralised here so override.nix and override-source.nix never hardcode
-  # package-specific strings.
-
-  # Python / PyPI package name (used as pname in derivations).
-  pname = "mamba-ssm";
+  # pname and nixpkgsAttr both equal packageName ("mamba-ssm") and are
+  # therefore omitted from the returned attrset; hld-type.nix validate fills
+  # them in with packageName automatically.
 
   # GitHub source coordinates.  Provide defaults; override-source.nix reads
   # srcInfo.owner / srcInfo.repo first and falls back to these.
   srcOwner = "state-spaces";
   srcRepo  = "mamba";
 
-  # Attribute name in pkgs.python3Packages for the upstream nixpkgs derivation.
-  # Used to inherit meta (homepage, license, platforms, …) automatically.
-  nixpkgsAttr = "mamba-ssm";
-
   # Changelog URL template (receives the resolved version string).
-  mkChangelog = v: "https://github.com/state-spaces/mamba/releases/tag/v${v}";
+  mkChangelog = hldHelpers."github-release-tag" srcOwner srcRepo;
 
   # ── overrideInfo constructor ───────────────────────────────────────────────
-  # Builds the common context attrset consumed by override.nix and
-  # override-source.nix.  Called once per buildBin / buildSource invocation
-  # with the concretise-supplied pkgs, cudaPackages, resolved version, and deps.
-  mkOverrideInfo = { pkgs, cudaPackages, version, resolvedDeps }: {
-    inherit pkgs cudaPackages pname srcOwner srcRepo version;
-    basePkg   = pkgs.python3Packages.${nixpkgsAttr} or null;
-    changelog = mkChangelog version;
-    torch     = resolvedDeps.torch or null;
+  # Standard implementation from hldHelpers.  Builds the common context attrset
+  # consumed by override.nix and override-source.nix.  Called once per
+  # buildBin / buildSource invocation with the concretise-supplied pkgs,
+  # cudaPackages, resolved version, and deps.
+  mkOverrideInfo = hldHelpers.mkOverrideInfo {
+    pname       = packageName;
+    nixpkgsAttr = packageName;
+    inherit srcOwner srcRepo mkChangelog;
   };
 
 in
 {
+  # ── Origin type ────────────────────────────────────────────────────────────
+  "origin-type" = "github-releases";
+
+  # ── Identity fields ────────────────────────────────────────────────────────
+  # pname and nixpkgsAttr are omitted here (both equal packageName);
+  # hld-type.nix validate fills them in automatically.
+  inherit srcOwner srcRepo mkChangelog mkOverrideInfo;
+
   # ── Binary availability ────────────────────────────────────────────────────
   # mamba-ssm uses per-version files: binary-hashes/v{version}.nix
   # Each file is a plain attrset keyed by cudaVersion label.

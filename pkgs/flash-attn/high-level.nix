@@ -6,7 +6,7 @@
 # flash-attn depends on torch at the high level.  When concretised, the
 # resolved concrete torch derivation is available via resolvedDeps."torch".
 #
-# hldHelpers and mkHLD are injected automatically by pkgs/default.nix.
+# hldHelpers and packageName are injected automatically by pkgs/default.nix.
 # No manual import of hld-helpers.nix is needed here.
 #
 # Usage:
@@ -18,15 +18,18 @@
 #     cuda     = "12.8";
 #   };
 
-{ torch, hldHelpers }:
+{ torch, hldHelpers, packageName }:
 
 # Fail early if the caller passed something other than a high-level derivation.
 assert hldHelpers.isHLD torch;
 
 let
   # ── Package identity ───────────────────────────────────────────────────────
-  # Centralised here so override.nix and override-source.nix never hardcode
-  # package-specific strings.
+  # pname differs from the HLD directory name ("flash-attn") — the PyPI
+  # package is named "flash-attention".  It is therefore declared explicitly
+  # and exposed as an HLD field.
+  # nixpkgsAttr equals packageName ("flash-attn") and is therefore omitted
+  # from the returned attrset; hld-type.nix validate fills it in automatically.
 
   # Python / PyPI package name (used as pname in derivations).
   # NOTE: differs from the HLD packageName "flash-attn".
@@ -37,26 +40,30 @@ let
   srcOwner = "Dao-AILab";
   srcRepo  = "flash-attention";
 
-  # Attribute name in pkgs.python3Packages for the upstream nixpkgs derivation.
-  # NOTE: differs from pname — nixpkgs uses "flash-attn".
-  nixpkgsAttr = "flash-attn";
-
   # Changelog URL template (receives the resolved version string).
-  mkChangelog = v: "https://github.com/Dao-AILab/flash-attention/releases/tag/v${v}";
+  mkChangelog = hldHelpers."github-release-tag" srcOwner srcRepo;
 
   # ── overrideInfo constructor ───────────────────────────────────────────────
-  # Builds the common context attrset consumed by override.nix and
-  # override-source.nix.  Called once per buildBin / buildSource invocation
-  # with the concretise-supplied pkgs, cudaPackages, resolved version, and deps.
-  mkOverrideInfo = { pkgs, cudaPackages, version, resolvedDeps }: {
-    inherit pkgs cudaPackages pname srcOwner srcRepo version;
-    basePkg   = pkgs.python3Packages.${nixpkgsAttr} or null;
-    changelog = mkChangelog version;
-    torch     = resolvedDeps.torch or null;
+  # Standard implementation from hldHelpers.  Builds the common context attrset
+  # consumed by override.nix and override-source.nix.  Called once per
+  # buildBin / buildSource invocation with the concretise-supplied pkgs,
+  # cudaPackages, resolved version, and deps.
+  # nixpkgsAttr = packageName = "flash-attn" (the nixpkgs attribute name).
+  mkOverrideInfo = hldHelpers.mkOverrideInfo {
+    inherit pname srcOwner srcRepo mkChangelog;
+    nixpkgsAttr = packageName;
   };
 
 in
 {
+  # ── Origin type ────────────────────────────────────────────────────────────
+  "origin-type" = "github-releases";
+
+  # ── Identity fields ────────────────────────────────────────────────────────
+  # pname is explicit (differs from packageName); nixpkgsAttr is omitted
+  # (equals packageName "flash-attn") and filled in by validate.
+  inherit pname srcOwner srcRepo mkChangelog mkOverrideInfo;
+
   # ── Binary availability ────────────────────────────────────────────────────
   # flash-attn uses per-version files: binary-hashes/v{version}.nix
   # Each file is a plain attrset keyed by cudaVersion label.
