@@ -125,6 +125,37 @@ let
     allowBuildingFromSource = true;
   };
 
+  # ── Test: mamba-ssm binary wheel, Python 3.13, CUDA 12.8 ─────────────────
+  # mamba-ssm 2.3.0 has py313 wheels for torch 2.7 on cu12.
+  testMambaCu128Result = concretise {
+    inherit pkgs;
+    mlPackages = [
+      pytorchScope.torch
+      pytorchScope."causal-conv1d"
+      pytorchScope."mamba-ssm"
+    ];
+    python                  = "3.13";
+    cuda                    = "12.8";
+    torch                   = "2.7";
+    allowBuildingFromSource = false;
+  };
+
+  # ── Test: mamba-ssm from source, Python 3.13, CUDA 12.8 ──────────────────
+  # mamba-ssm 2.3.0 has no py313 wheel for torch >= 2.8, so a source build
+  # is required.
+  testMambaSourceCu128Result = concretise {
+    inherit pkgs;
+    mlPackages = [
+      pytorchScope.torch
+      pytorchScope."causal-conv1d"
+      pytorchScope."mamba-ssm"
+    ];
+    python                  = "3.13";
+    cuda                    = "12.8";
+    torch                   = "2.10";
+    allowBuildingFromSource = true;
+  };
+
 in
 {
   packages = {
@@ -136,6 +167,8 @@ in
     test-flash-attn-bin-py313-cu128            = testFlashAttnBinCu128Result.env;
     test-flash-attn-source-py313-cu128         = testFlashAttnSourceCu128Result.env;
     test-all-py313-cu128                       = testAllCu128Result.env;
+    test-mamba-py313-cu128                     = testMambaCu128Result.env;
+    test-mamba-source-py313-cu128              = testMambaSourceCu128Result.env;
   };
 
   devShells = {
@@ -147,6 +180,8 @@ in
     test-flash-attn-bin-py313-cu128            = testFlashAttnBinCu128Result.devShell;
     test-flash-attn-source-py313-cu128         = testFlashAttnSourceCu128Result.devShell;
     test-all-py313-cu128                       = testAllCu128Result.devShell;
+    test-mamba-py313-cu128                     = testMambaCu128Result.devShell;
+    test-mamba-source-py313-cu128              = testMambaSourceCu128Result.devShell;
   };
 
   apps = {
@@ -158,5 +193,7 @@ in
     test-flash-attn-bin-py313-cu128            = makeTestApp testFlashAttnBinCu128Result.env      "test-flash-attn-bin-py313-cu128";
     test-flash-attn-source-py313-cu128         = makeTestApp testFlashAttnSourceCu128Result.env   "test-flash-attn-source-py313-cu128";
     test-all-py313-cu128                       = makeTestApp testAllCu128Result.env               "test-all-py313-cu128";
+    test-mamba-py313-cu128                     = makeTestApp testMambaCu128Result.env             "test-mamba-py313-cu128";
+    test-mamba-source-py313-cu128              = makeTestApp testMambaSourceCu128Result.env       "test-mamba-source-py313-cu128";
   };
 }

@@ -77,9 +77,11 @@ assert hldHelpers.isHLD torch;
   # causal-conv1d wheels are generic across CUDA 12.x, so we always use "cu12"
   # as the cudaVersion passed to override.nix regardless of cudaLabel.
   buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
+    let
+      inherit (resolvedDeps) torch;
+    in
     import ./override.nix {
-      inherit pkgs;
-      torch               = resolvedDeps."torch";
+      inherit pkgs torch;
       causalConv1dVersion = version;
       cudaVersion         = "cu12";
       # cxx11abi defaults to "TRUE" in override.nix, matching standard pip wheels
@@ -107,10 +109,12 @@ assert hldHelpers.isHLD torch;
       + "--source-only --tag v${v}"
     )
     else
+    let
+      inherit (resolvedDeps) torch;
+    in
     # (import ../../nix-retry-wrapper/inject-wrappers.nix wrappers)  # re-enable wrappers
     import ./override-source.nix {
-      inherit pkgs cudaPackages;
-      torch               = resolvedDeps."torch";
+      inherit pkgs cudaPackages torch;
       causalConv1dVersion = v;
     };
 }

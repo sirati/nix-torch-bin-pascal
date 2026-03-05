@@ -76,6 +76,31 @@
     else [];
 
   # --------------------------------------------------------------------------
+  # getVersionsFromSourceFiles
+  #
+  # sourceHashesDir : path to the source-hashes/ directory
+  # _cudaLabel      : ignored (source builds are independent of CUDA label)
+  # _pyVer          : ignored (source builds are independent of Python version)
+  #
+  # Scans sourceHashesDir for files matching v{semver}.nix and returns the list
+  # of version strings.  Unlike the binary-hashes helpers, this does not filter
+  # by cuda or Python version — a source build is valid for every combination
+  # once the source hash file exists.
+  #
+  # Signature takes cudaLabel and pyVer parameters for consistency with the
+  # other getVersions helpers (allowing drop-in substitution), but both are
+  # ignored (prefixed with _ to signal they are unused).
+  # --------------------------------------------------------------------------
+  getVersionsFromSourceFiles = sourceHashesDir: _cudaLabel: _pyVer:
+    let
+      files  = builtins.readDir sourceHashesDir;
+      vNames = builtins.filter
+        (n: builtins.match "v[0-9]+\\.[0-9]+\\.[0-9]+\\.nix" n != null)
+        (builtins.attrNames files);
+    in
+    map (n: builtins.substring 1 (builtins.stringLength n - 5) n) vNames;
+
+  # --------------------------------------------------------------------------
   # getVersionsFromVersionFiles
   #
   # binaryHashesDir : path to the binary-hashes/ directory

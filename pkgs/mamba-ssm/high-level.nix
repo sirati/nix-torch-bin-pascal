@@ -1,37 +1,40 @@
-# High-level derivation for flash-attention.
+# High-level derivation for mamba-ssm.
 #
 # This is NOT a buildable derivation.  Import it and pass it (along with other
 # high-level derivations) to concretise.nix, which resolves the concrete build.
 #
-# flash-attn depends on torch at the high level.  When concretised, the
-# resolved concrete torch derivation is available via resolvedDeps."torch".
+# mamba-ssm depends on torch and causal-conv1d at the high level.  When
+# concretised, the resolved concrete derivations are available via
+# resolvedDeps."torch" and resolvedDeps."causal-conv1d".
 #
-# hldHelpers and mkHLD are injected automatically by pkgs/default.nix.
-# No manual import of hld-helpers.nix is needed here.
+# hldHelpers is injected automatically by pkgs/default.nix.
 #
 # Usage:
 #   let pp = inputs.this-flake.pytorch-packages; in
 #   pp.concretise {
 #     inherit pkgs;
-#     mlPackages = with pp; [ "flash-attn" ];  # torch is implied automatically
+#     packages = with pp; [ "mamba-ssm" ];  # torch and causal-conv1d implied
 #     python   = "3.13";
 #     cuda     = "12.6";
 #   };
 
-{ torch, hldHelpers }:
+{ torch, causal-conv1d, hldHelpers }:
 
-# Fail early if the caller passed something other than a high-level derivation.
+# Fail early if the caller passed something other than high-level derivations.
 assert hldHelpers.isHLD torch;
+assert hldHelpers.isHLD causal-conv1d;
 
 {
   # ── Binary availability ────────────────────────────────────────────────────
-  # flash-attn uses per-version files: binary-hashes/v{version}.nix
+  # mamba-ssm uses per-version files: binary-hashes/v{version}.nix
   # Each file is a plain attrset keyed by cudaVersion label.
   # The generic "cu12" key covers all CUDA 12.x variants.
   getVersions = hldHelpers.getVersionsFromVersionFiles ./binary-hashes;
 
   # ── High-level dependencies ────────────────────────────────────────────────
-  highLevelDeps = { inherit torch; };
+  highLevelDeps = {
+    inherit torch causal-conv1d;
+  };
 
   # ── ABI compatibility check ────────────────────────────────────────────────
   #
@@ -41,9 +44,6 @@ assert hldHelpers.isHLD torch;
   # in the binary-hashes file (across all Python versions).  When torch is
   # strictly newer than the highest compat key we have wheels for, we fall back
   # to a source build.
-  #
-  # This ensures torch 2.10+ always triggers a source build, since the newest
-  # flash-attn pre-built wheels only cover up to torch 2.9 compat.
   canBuildBin = { resolvedDeps, version, cudaLabel, ... }:
     let
       torchVersion    = resolvedDeps."torch".version;
@@ -77,16 +77,16 @@ assert hldHelpers.isHLD torch;
   # Received from concretise:
   #   { pkgs, cudaPackages, cudaLabel, resolvedDeps, version }
   #
-  # flash-attn wheels are generic across CUDA 12.x, so we always use "cu12"
+  # mamba-ssm wheels are generic across CUDA 12.x, so we always use "cu12"
   # as the cudaVersion passed to override.nix regardless of cudaLabel.
   buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
     let
-      inherit (resolvedDeps) torch;
+      inherit (resolvedDeps) torch causal-conv1d;
     in
     import ./override.nix {
-      inherit pkgs torch;
-      flashAttnVersion = version;
-      cudaVersion      = "cu12";
+      inherit pkgs torch causal-conv1d;
+      mambaVersion = version;
+      cudaVersion  = "cu12";
       # cxx11abi defaults to "TRUE" in override.nix, matching standard pip wheels
     };
 
@@ -98,7 +98,7 @@ assert hldHelpers.isHLD torch;
   buildSource = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
     let
       v = if version != null then version else throw (
-        "flash-attn buildSource: version is null — no binary-hashes entry "
+        "mamba-ssm buildSource: version is null — no binary-hashes entry "
         + "exists for cudaLabel '${cudaLabel}'.  Add a binary-hashes entry "
         + "for the desired version, or run generate-hashes.py to fetch it."
       );
@@ -106,17 +106,17 @@ assert hldHelpers.isHLD torch;
     in
     if !builtins.pathExists sourceHashPath
     then throw (
-      "flash-attn buildSource: source-hashes/v${v}.nix does not exist. "
-      + "Run: nix-shell pkgs/flash-attn/generate-hashes.py -- "
+      "mamba-ssm buildSource: source-hashes/v${v}.nix does not exist. "
+      + "Run: nix-shell pkgs/mamba-ssm/generate-hashes.py -- "
       + "--source-only --tag v${v}"
     )
     else
     let
-      inherit (resolvedDeps) torch;
+      inherit (resolvedDeps) torch causal-conv1d;
     in
     # (import ../../nix-retry-wrapper/inject-wrappers.nix wrappers)  # re-enable wrappers
     import ./override-source.nix {
-      inherit pkgs cudaPackages torch;
-      flashAttnVersion = v;
+      inherit pkgs cudaPackages torch causal-conv1d;
+      mambaVersion = v;
     };
 }
