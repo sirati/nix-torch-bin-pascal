@@ -55,6 +55,7 @@ from github_release_runner.tags import resolve_tags, winning_tag_for_base_versio
 from github_release_runner.collector import collect_all_wheels
 from github_release_runner.missing_digests import write_missing_digests
 from github_release_runner.runner import run_binary_hashes, run_source_hashes, run_all_hashes
+from source_fetcher import fetch_github_source_hashes_with_submodules_batch
 
 __all__ = [
     "strip_nix_shell_dashdash",
@@ -66,4 +67,5 @@ __all__ = [
     "run_binary_hashes",
     "run_source_hashes",
     "run_all_hashes",
+    "fetch_github_source_hashes_with_submodules_batch",
 ]

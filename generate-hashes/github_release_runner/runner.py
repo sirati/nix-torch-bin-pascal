@@ -11,6 +11,7 @@ from source_fetcher import (
     SourceEntry,
     fetch_github_source_hash,
     fetch_github_source_hash_with_submodules,
+    fetch_github_source_hashes_with_submodules_batch,
     source_hash_exists,
     write_source_hash_file,
 )
@@ -113,6 +114,15 @@ def run_source_hashes(
     Skips immediately when ``args.skip_source`` is ``True``.
     Skips individual versions whose file already exists on disk.
 
+    When *with_submodules* is ``True`` and more than one tag needs to be
+    fetched (i.e. ``--tag`` was *not* supplied), the batch variant
+    :func:`~source_fetcher.fetch_github_source_hashes_with_submodules_batch`
+    is used.  It clones the repository once and reuses that local mirror for
+    all tags, saving a full network clone per tag.  For the single-tag case
+    (``--tag`` supplied) the original
+    :func:`~source_fetcher.fetch_github_source_hash_with_submodules` is used
+    unchanged so callers do not need ``nix-prefetch-git`` in their nix-shell.
+
     Parameters
     ----------
     tags:
@@ -126,12 +136,9 @@ def run_source_hashes(
     args:
         Parsed arguments namespace.  ``args.skip_source`` is honoured.
     with_submodules:
-        When ``True``, compute the hash via
-        :func:`~source_fetcher.fetch_github_source_hash_with_submodules`
-        (git clone + submodule init) instead of the default tarball fetch.
-        Use this for packages whose ``fetchFromGitHub`` sets
-        ``fetchSubmodules = true`` (e.g. flash-attn).  The resulting ``hash``
-        field in the ``.nix`` file is the submodule-aware NAR hash.
+        When ``True``, compute the hash via the submodule-aware path instead
+        of the default tarball fetch.  Use this for packages whose
+        ``fetchFromGitHub`` sets ``fetchSubmodules = true`` (e.g. flash-attn).
     """
     if getattr(args, "skip_source", False):
         print("\nSkipping source-hash generation (--skip-source).", file=sys.stderr)
@@ -140,6 +147,8 @@ def run_source_hashes(
     owner, repo = github_repo.split("/", 1)
     winning_tags = _winning_tags_from_tags(tags)
 
+    # Partition: already-cached vs. needs fetching
+    to_fetch: dict[str, str] = {}   # base_version → winning_tag
     print(file=sys.stderr)
     for base_version in sorted(winning_tags.keys(), key=sort_version_key):
         if source_hash_exists(source_hashes_dir, base_version):
@@ -147,25 +156,66 @@ def run_source_hashes(
                 f"  source-hashes/v{base_version}.nix already exists — skipping.",
                 file=sys.stderr,
             )
-            continue
+        else:
+            to_fetch[base_version] = winning_tags[base_version]
 
-        winning_tag = winning_tags[base_version]
+    if not to_fetch:
+        return
+
+    # Choose batch vs. single-tag strategy.
+    # Batch is used when:
+    #   (a) the package requires submodules (with_submodules=True), AND
+    #   (b) --tag was not supplied (i.e. we have multiple tags to fetch).
+    # Single-tag mode keeps the original nix-prefetch-github path so the
+    # caller's nix-shell only needs nix-prefetch-github, not nix-prefetch-git.
+    use_batch = with_submodules and not getattr(args, "tag", None) and len(to_fetch) > 1
+
+    if use_batch:
+        # Ordered list of tags to pass to the batch fetcher (sorted by version
+        # so progress output is deterministic).
+        ordered_tags = [
+            to_fetch[base]
+            for base in sorted(to_fetch.keys(), key=sort_version_key)
+        ]
         try:
-            if with_submodules:
-                sri_hash = fetch_github_source_hash_with_submodules(owner, repo, winning_tag)
-            else:
-                sri_hash = fetch_github_source_hash(owner, repo, winning_tag)
+            batch_results = fetch_github_source_hashes_with_submodules_batch(
+                owner, repo, ordered_tags,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"  ERROR in batch submodule hash fetch for {github_repo}: {exc}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        for base_version in sorted(to_fetch.keys(), key=sort_version_key):
+            winning_tag = to_fetch[base_version]
+            sri_hash = batch_results[winning_tag]
             write_source_hash_file(
                 source_hashes_dir,
                 SourceEntry(version=base_version, tag=winning_tag, hash=sri_hash),
             )
-        except Exception as exc:  # noqa: BLE001
-            print(
-                f"  ERROR fetching source hash for {base_version} "
-                f"({winning_tag}): {exc}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+    else:
+        for base_version in sorted(to_fetch.keys(), key=sort_version_key):
+            winning_tag = to_fetch[base_version]
+            try:
+                if with_submodules:
+                    sri_hash = fetch_github_source_hash_with_submodules(
+                        owner, repo, winning_tag,
+                    )
+                else:
+                    sri_hash = fetch_github_source_hash(owner, repo, winning_tag)
+                write_source_hash_file(
+                    source_hashes_dir,
+                    SourceEntry(version=base_version, tag=winning_tag, hash=sri_hash),
+                )
+            except Exception as exc:  # noqa: BLE001
+                print(
+                    f"  ERROR fetching source hash for {base_version} "
+                    f"({winning_tag}): {exc}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
 
 
 def run_all_hashes(

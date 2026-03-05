@@ -1,5 +1,5 @@
 #!/usr/bin/env nix-shell
-#!nix-shell -i python3 -p python3 nix nix-prefetch-github
+#!nix-shell -i python3 -p python3 nix git nix-prefetch-github
 
 """
 Generate flash-attn binary-hashes from GitHub releases.

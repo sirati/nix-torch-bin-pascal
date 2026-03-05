@@ -62,8 +62,10 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 
 
@@ -267,6 +269,171 @@ def fetch_github_source_hash_with_submodules(owner: str, repo: str, tag: str) ->
             file=sys.stderr,
         )
         raise
+
+
+# ---------------------------------------------------------------------------
+# Hash computation — batch git clone with submodules (multi-tag optimisation)
+# ---------------------------------------------------------------------------
+
+def _copy_tree_without_git(src: str, dst: str) -> None:
+    """
+    Copy the directory tree at *src* to *dst*, skipping every ``.git``
+    directory at every level.
+
+    Symlinks are preserved as symlinks (not followed), matching the behaviour
+    of ``fetchgit`` / ``fetchFromGitHub``.
+    """
+    shutil.copytree(
+        src,
+        dst,
+        ignore=shutil.ignore_patterns(".git"),
+        symlinks=True,
+    )
+
+
+def fetch_github_source_hashes_with_submodules_batch(
+    owner: str,
+    repo: str,
+    tags: list[str],
+) -> dict[str, str]:
+    """
+    Clone *owner/repo* **once** and return ``{tag: sri_hash}`` for every tag.
+
+    This is the multi-tag optimisation for packages that use
+    ``fetchFromGitHub { fetchSubmodules = true; }``.
+
+    Algorithm
+    ---------
+    1. ``git clone --filter=blob:none --no-checkout <url> <mirror>`` — only
+       git metadata is transferred; blob content is fetched on demand during
+       checkout.
+    2. For each tag, in the mirror:
+
+       a. ``git checkout --force <tag>`` — checks out main-repo files.
+       b. ``git submodule update --init --recursive`` — fetches and checks out
+          all submodules.  Submodule git objects are cached inside
+          ``<mirror>/.git/modules/``; tags that share a submodule commit (very
+          common, e.g. the cutlass pin in flash-attn) skip the network download
+          for that submodule entirely.
+       c. Copy the full tree to a scratch directory, excluding every ``.git``
+          directory (exactly what ``fetchgit`` does before hashing).
+       d. ``nix hash path --sri --type sha256 <scratch>`` — computes the NAR
+          hash.  Nix's NAR format is content + permissions only; it does *not*
+          include file timestamps, so no timestamp normalisation is required.
+          This hash is identical to what ``fetchFromGitHub { fetchSubmodules =
+          true; }`` stores in the Nix store.
+       e. Delete the scratch copy; proceed to the next tag.
+
+    .. note::
+        Submodule data for *new* submodule commits is still fetched from the
+        network.  Once fetched it is cached in ``<mirror>/.git/modules/`` and
+        reused for all subsequent tags that reference the same commit.
+
+    Requires
+    --------
+    * ``git`` on PATH
+    * ``nix`` on PATH (≥ 2.4, for ``nix hash path``)
+
+    Parameters
+    ----------
+    owner, repo:
+        GitHub repository coordinates.
+    tags:
+        Git tags to process, e.g. ``["v2.8.3", "v2.7.0"]``.  Tags are
+        processed in the order given; the caller is responsible for filtering
+        out tags whose source-hash files already exist on disk.
+
+    Returns
+    -------
+    dict[str, str]
+        Mapping from tag to SRI hash, e.g.
+        ``{"v2.8.3": "sha256-6I1O4E5K5IdbpzrXFHK06QVcOE8zuVkFE338ffk6N8M="}``.
+
+    Raises
+    ------
+    subprocess.CalledProcessError
+        If any ``git`` or ``nix`` command exits non-zero.
+    """
+    if not tags:
+        return {}
+
+    url = f"https://github.com/{owner}/{repo}.git"
+    results: dict[str, str] = {}
+
+    with tempfile.TemporaryDirectory(prefix="nix-src-batch-") as tmpdir:
+        mirror_dir = os.path.join(tmpdir, "mirror")
+        scratch_dir = os.path.join(tmpdir, "scratch")
+
+        print(
+            f"  [batch] Cloning {owner}/{repo} once "
+            f"(--filter=blob:none --no-checkout); "
+            f"{len(tags)} tag(s) will reuse this mirror …",
+            file=sys.stderr,
+        )
+        subprocess.run(
+            [
+                "git", "clone",
+                "--filter=blob:none",
+                "--no-checkout",
+                url,
+                mirror_dir,
+            ],
+            check=True,
+        )
+
+        for tag in tags:
+            print(
+                f"  [batch] {owner}/{repo} @ {tag} — "
+                f"checkout + submodule update …",
+                file=sys.stderr,
+            )
+
+            # Check out the main repository at this tag.
+            subprocess.run(
+                ["git", "-C", mirror_dir, "checkout", "--force", tag],
+                check=True,
+            )
+
+            # Fetch and check out all submodules.  git caches each submodule's
+            # objects under <mirror>/.git/modules/ so commits already seen for
+            # a previous tag do not require another network round-trip.
+            subprocess.run(
+                [
+                    "git", "-C", mirror_dir,
+                    "submodule", "update", "--init", "--recursive",
+                ],
+                check=True,
+            )
+
+            # Copy the working tree to a clean scratch dir (no .git dirs).
+            if os.path.exists(scratch_dir):
+                shutil.rmtree(scratch_dir)
+            _copy_tree_without_git(mirror_dir, scratch_dir)
+
+            # Compute the NAR hash.  NAR is content + permissions only —
+            # timestamps are not part of the serialisation, so no normalisation
+            # is needed.  The result is identical to what Nix stores when
+            # fetchFromGitHub { fetchSubmodules = true; } runs.
+            hash_result = subprocess.run(
+                ["nix", "hash", "path", "--sri", "--type", "sha256", scratch_dir],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            sri = hash_result.stdout.strip()
+            if not sri:
+                raise RuntimeError(
+                    f"`nix hash path` returned an empty hash for "
+                    f"{owner}/{repo}@{tag}"
+                )
+
+            print(f"    → {sri}", file=sys.stderr)
+            results[tag] = sri
+
+            # Clean the scratch dir now to free disk space before the next tag.
+            shutil.rmtree(scratch_dir, ignore_errors=True)
+
+    return results
 
 
 # ---------------------------------------------------------------------------

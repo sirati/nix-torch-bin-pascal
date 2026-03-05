@@ -47,16 +47,19 @@ pkgs.python3Packages.buildPythonPackage {
     inherit (srcInfo) rev hash;
   };
 
-  # Build-time Python/tool dependencies — mirrors the upstream nixpkgs flash-attn
-  # pattern: cuda_nvcc goes in build-system alongside setuptools/ninja; torch is
-  # intentionally NOT here (only in dependencies below) so that pip does not
-  # attempt to resolve torch's transitive nvidia-* requirements during the wheel
-  # build step and fail because those packages are Nix-managed rather than
-  # pip-installed.
+  # Build-time Python/tool dependencies — mirrors the upstream nixpkgs
+  # causal-conv1d pattern exactly: torch goes in build-system so setup.py can
+  # `import torch` to discover include paths; cuda_nvcc belongs in buildInputs
+  # (not build-system) since it is a native tool, not a Python package.
+  #
+  # torch MUST be in build-system: without it, the PEP-517 build backend falls
+  # back to pip to satisfy the torch build-time requirement, which in turn tries
+  # to resolve all of torch's transitive nvidia-* deps from PyPI — failing inside
+  # the Nix sandbox because those packages are Nix-managed, not pip-installable.
   build-system = [
     pkgs.python3Packages.setuptools
     pkgs.ninja
-    cudaPackages.cuda_nvcc
+    torch
   ];
 
   nativeBuildInputs = [
@@ -72,6 +75,7 @@ pkgs.python3Packages.buildPythonPackage {
     libcusparse   # cusparse.h
     libcusolver   # cusolverDn.h
     libcublas     # cublas_v2.h, -lcublas
+    cuda_nvcc     # nvcc compiler + CUDA toolkit headers (native build tool)
   ];
 
   # Runtime Python dependency: only torch is needed at import time.

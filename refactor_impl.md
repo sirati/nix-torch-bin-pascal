@@ -1,6 +1,87 @@
 # Refactor Implementation Notes
 
-## Status: steps 1–7c complete + pkgs/ refactor complete + HLD type + hldHelpers injection complete + preferBin→allowBuildingFromSource + nvidia-container key naming + canBuildBin + causal-conv1d buildSource + devShell fix + wheel-helpers extraction + generate-hashes rename + source-hashes folder + combined binary+source generator
+## Status: steps 1–7c complete + pkgs/ refactor complete + HLD type + hldHelpers injection complete + preferBin→allowBuildingFromSource + nvidia-container key naming + canBuildBin + causal-conv1d buildSource + devShell fix + wheel-helpers extraction + generate-hashes rename + source-hashes folder + combined binary+source generator + causal-conv1d build-system fix + source_fetcher batch-clone
+
+---
+
+## This session
+
+### causal-conv1d `override-source.nix`: align with upstream nixpkgs
+
+The source build was failing with:
+```
+ERROR Missing dependencies: torch, nvidia-cuda-cupti-cu12==12.8.90, ...
+```
+
+Root cause: without `torch` in `build-system`, the PEP-517 build backend falls
+back to pip to satisfy the torch build-time requirement, which then tries to
+resolve all of torch's transitive nvidia-* deps from PyPI — failing in the Nix
+sandbox.
+
+Fix applied to `pkgs/causal-conv1d/override-source.nix`:
+- `torch` added to `build-system` (mirrors upstream nixpkgs causal-conv1d)
+- `cuda_nvcc` moved from `build-system` to `buildInputs` (it is a native tool,
+  not a Python build-time package; upstream puts it in buildInputs)
+
+Note: flash-attn's `override-source.nix` already matched the upstream nixpkgs
+flash-attn pattern (cuda_nvcc in build-system, torch NOT in build-system), so
+no change was needed there.
+
+### `source_fetcher.py`: batch-clone optimisation for submodule hashes
+
+`fetch_github_source_hashes_with_submodules_batch` added to `source_fetcher.py`.
+
+Old approach: `nix-prefetch-github --fetch-submodules` once per tag → full fresh
+clone of the (potentially large) repository per tag (~59 clones for flash-attn).
+
+New batch approach:
+1. `git clone --filter=blob:none --no-checkout <https_url> <mirror>` once.
+2. For each tag, in the mirror:
+   a. `git checkout --force <tag>` — checks out main-repo files.
+   b. `git submodule update --init --recursive` — fetches and checks out all
+      submodules.  Submodule git objects are cached in `<mirror>/.git/modules/`;
+      tags that share a submodule commit (very common, e.g. the cutlass pin in
+      flash-attn) skip the network download for that submodule entirely.
+   c. Copy tree to scratch dir, excluding every `.git` directory (helper
+      `_copy_tree_without_git` using `shutil.copytree` + `ignore_patterns`).
+   d. `nix hash path --sri --type sha256 <scratch>` — NAR format is content +
+      permissions only, timestamps are not part of the serialisation, so no
+      normalisation is needed.  Verified: produces the same hash as
+      `nix-prefetch-github --fetch-submodules` for v2.8.3
+      (`sha256-6I1O4E5K5IdbpzrXFHK06QVcOE8zuVkFE338ffk6N8M=`).
+   e. Delete scratch; proceed to next tag.
+3. Return `{tag: sri_hash}` dict.
+
+No dependency on `nix-prefetch-git` — only `git` and `nix` are required.
+The initial `nix-prefetch-git` design was abandoned because nixpkgs-unstable
+(26.05pre) installs the binary as `nix-prefetch-git-26.05pre-git` rather than
+`nix-prefetch-git`, and because the direct approach also gives better submodule
+caching (objects reused between tags in the same mirror).
+
+### `runner.py`: use batch variant automatically for multi-tag submodule fetches
+
+`run_source_hashes` now partitions tags into already-cached vs needs-fetching
+before deciding strategy:
+
+- `with_submodules=True` AND `--tag` NOT supplied AND >1 tag to fetch → batch
+- Otherwise (single-tag `--tag` mode, or `with_submodules=False`) → existing
+  per-tag path unchanged (still uses `nix-prefetch-github` for single-tag case)
+
+### flash-attn `generate-hashes.py` shebang
+
+Updated from `python3 nix nix-prefetch-github` to
+`python3 nix git nix-prefetch-github` so the batch path has `git` available.
+`nix-prefetch-git` was added then removed once the implementation switched to
+the direct `git checkout` + `nix hash path` approach.
+
+### Flash-attn source hashes — COMPLETE
+
+All flash-attn source hashes generated and staged:
+- v2.8.3 verified via single-tag run: hash matches known reference
+  `sha256-6I1O4E5K5IdbpzrXFHK06QVcOE8zuVkFE338ffk6N8M=`
+- Full run via batch path produced 56 new entries (v1.0.2 through
+  vfa4-v4.0.0.beta1), all staged.
+- `source-hashes/` now covers v0.2.7 through v2.8.3 plus the fa4 betas.
 
 ---
 
