@@ -5,44 +5,23 @@
 # is ABI-compatible with the resolved torch version.
 #
 # Arguments:
-#   pkgs        - nixpkgs package set; pkgs.python3 must be the target
-#                 Python interpreter (set by concretise via pkgsForBuild)
-#   torch       - the concrete torch derivation from resolvedDeps."torch"
-#   causal-conv1d - the concrete causal-conv1d derivation from resolvedDeps."causal-conv1d"
-#   cudaPackages - CUDA package set (already configured for Pascal or
-#                  vanilla by concretise)
-#   version     - version string to build, e.g. "2.3.0"
-#   pname       - Python package name, passed from high-level.nix
-#   srcOwner    - GitHub owner, passed from high-level.nix
-#   srcRepo     - GitHub repo, passed from high-level.nix
-#   basePkg     - upstream nixpkgs derivation for meta inheritance (may be null)
-#   changelog   - changelog URL for this version (may be null)
+#   overrideInfo  - common package context attrset from high-level.nix
+#                   (pkgs, cudaPackages, version, pname, srcOwner, srcRepo,
+#                    basePkg, changelog, torch)
+#   causal-conv1d - the concrete causal-conv1d derivation from resolvedDeps
 
-{ pkgs
-, torch
-, causal-conv1d
-, cudaPackages
-, version
-, pname
-, srcOwner
-, srcRepo
-, basePkg   ? null
-, changelog ? null
-}:
+{ overrideInfo, causal-conv1d }:
 
 let
   buildSourcePackage =
-    (import ../../concretise/source-build-helpers.nix { inherit pkgs; }).buildSourcePackage;
+    (import ../../concretise/source-build-helpers.nix).buildSourcePackage;
 
-  srcInfo = import (./source-hashes + "/v${version}.nix");
+  inherit (overrideInfo) pkgs;
 
 in
 buildSourcePackage {
-  inherit pname version torch cudaPackages basePkg changelog;
-
-  srcOwner = srcInfo.owner or srcOwner;
-  srcRepo  = srcInfo.repo  or srcRepo;
-  inherit srcInfo;
+  inherit overrideInfo;
+  sourceHashesDir = ./source-hashes;
 
   # The upstream pyproject.toml lists torch under [build-system] requires.
   # Our torch derivation is the real PyPI binary wheel whose dist-info carries

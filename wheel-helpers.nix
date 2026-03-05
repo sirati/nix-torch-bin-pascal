@@ -7,53 +7,38 @@
 #   3. Fetch the wheel and build a Python package derivation from it.
 #
 # This file factors that logic out so each package's override.nix is a thin
-# wrapper that only supplies the package-specific bits (pname, meta, extra deps).
+# wrapper that only supplies the package-specific bits (extra deps, etc.).
 #
 # Usage (from a package's override.nix):
 #
 #   let
-#     wheelHelpers = import ../../wheel-helpers.nix { inherit pkgs; };
+#     wheelHelpers = import ../../wheel-helpers.nix;
 #   in
 #   wheelHelpers.buildBinWheel {
-#     pname            = "causal-conv1d";
-#     version          = causalConv1dVersion;
-#     binaryHashesFile = ./binary-hashes + "/v${causalConv1dVersion}.nix";
-#     inherit torch cudaVersion cxx11abi;
-#     meta = { … };
+#     inherit overrideInfo;
+#     binaryHashesDir = ./binary-hashes;
 #   };
 
-{ pkgs }:
-
-let
-  lib = pkgs.lib;
-
-  inherit (import ./generate-hashes/lib.nix { inherit pkgs; })
-    pythonVersion pyVer os arch versionLE versionLT;
-
-in
+# No file-level argument: all inputs arrive via overrideInfo inside the call.
 {
   # Build a Python package from a pre-built binary wheel.
   #
   # Required arguments:
-  #   pname             - Python package name (e.g. "causal-conv1d")
-  #   version           - Package version string (e.g. "1.6.0")
-  #   binaryHashesFile  - Path to the v{version}.nix binary-hashes file
-  #                       (e.g. ./binary-hashes + "/v${version}.nix")
-  #   torch             - Resolved torch derivation (must have .version attribute)
+  #   overrideInfo      - Common package context attrset from high-level.nix.
+  #                       Fields used:
+  #                         pkgs          nixpkgs package set
+  #                         pname         Python/PyPI package name
+  #                         version       version string
+  #                         torch         resolved torch derivation (or null)
+  #                         basePkg       upstream nixpkgs derivation (or null)
+  #                         changelog     changelog URL string (or null)
+  #   binaryHashesDir   - Path to the package's binary-hashes/ directory.
+  #                       buildBinWheel imports
+  #                       binaryHashesDir + "/v${version}.nix" automatically.
   #
   # Optional arguments – meta:
-  #   basePkg            - The upstream nixpkgs derivation for this package
-  #                        (e.g. pkgs.python3Packages."causal-conv1d").
-  #                        When non-null, its .meta is used as the base;
-  #                        homepage, license, platforms etc. are inherited
-  #                        automatically.  Default: null.
-  #   changelog          - Changelog URL string for this exact version.
-  #                        Merged into the final meta when non-null.  Default: null.
   #   extraMeta          - Attrset merged last into the final meta, allowing
   #                        per-package overrides of any field.  Default: {}.
-  #   meta               - Full explicit meta attrset.  When provided it is used
-  #                        as-is and basePkg/changelog/extraMeta are ignored.
-  #                        Default: null (meta composed from basePkg etc.).
   #
   # Optional arguments – build:
   #   cudaVersion        - Top-level key in the hash file (default: "cu12")
@@ -66,13 +51,8 @@ in
   #                        Pass [] to skip entirely.
   #                        Default: null → [ (pname with "-" replaced by "_") ]
   buildBinWheel =
-    { pname
-    , version
-    , binaryHashesFile
-    , torch
-    , meta               ? null
-    , basePkg            ? null
-    , changelog          ? null
+    { overrideInfo
+    , binaryHashesDir
     , extraMeta          ? {}
     , cudaVersion        ? "cu12"
     , cxx11abi           ? "TRUE"
@@ -80,14 +60,28 @@ in
     , pythonImportsCheck ? null   # null → [ (pname with "-" → "_") ]
     }:
     let
+      # ── Unpack overrideInfo ─────────────────────────────────────────────────
+      pkgs      = overrideInfo.pkgs;
+      pname     = overrideInfo.pname;
+      version   = overrideInfo.version;
+      torch     = overrideInfo.torch     or null;
+      basePkg   = overrideInfo.basePkg   or null;
+      changelog = overrideInfo.changelog or null;
+
+      lib = pkgs.lib;
+
+      inherit (import ./generate-hashes/lib.nix { inherit pkgs; })
+        pythonVersion pyVer os arch versionLE versionLT;
+
       _assertLinux =
         if os == "linux" then true
         else throw "${pname} pre-built wheels are only available for Linux (got: ${os})";
 
       # ── Binary-hashes lookup ────────────────────────────────────────────────
 
-      versionData     = (import binaryHashesFile).${cudaVersion};
-      availableCompat = builtins.attrNames versionData;
+      binaryHashesFile = binaryHashesDir + "/v${version}.nix";
+      versionData      = (import binaryHashesFile).${cudaVersion};
+      availableCompat  = builtins.attrNames versionData;
 
       # ── Torch major.minor extraction ────────────────────────────────────────
 
@@ -154,23 +148,19 @@ in
         else [ (builtins.replaceStrings [ "-" ] [ "_" ] pname) ];
 
       # ── Meta composition ──────────────────────────────────────────────────
-      # If an explicit meta attrset is passed, use it verbatim (backwards
-      # compat).  Otherwise compose from the upstream nixpkgs derivation's meta
-      # (basePkg.meta), overlaying the pre-built-wheel-specific fields, then
-      # applying changelog and any extraMeta overrides.
+      # Compose from the upstream nixpkgs derivation's meta (basePkg.meta),
+      # overlay the pre-built-wheel-specific fields, then apply changelog and
+      # any extraMeta overrides.
+      baseMeta = if basePkg != null then basePkg.meta else {};
       finalMeta =
-        if meta != null
-        then meta
-        else
-          let baseMeta = if basePkg != null then basePkg.meta else {};
-          in baseMeta
-             // {
-               description =
-                 "${baseMeta.description or pname} (pre-built wheel)";
-               sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
-             }
-             // lib.optionalAttrs (changelog != null) { inherit changelog; }
-             // extraMeta;
+        baseMeta
+        // {
+          description =
+            "${baseMeta.description or pname} (pre-built wheel)";
+          sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
+        }
+        // lib.optionalAttrs (changelog != null) { inherit changelog; }
+        // extraMeta;
 
     in
     assert _assertLinux;
@@ -188,7 +178,8 @@ in
       build-system = [];
       buildInputs  = [];
 
-      dependencies = [ torch ] ++ extraDependencies;
+      # torch is the first runtime dependency when present; callers append extras.
+      dependencies = lib.optional (torch != null) torch ++ extraDependencies;
 
       doCheck = false;
 

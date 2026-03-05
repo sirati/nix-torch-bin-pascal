@@ -13,7 +13,7 @@
 #   let pp = inputs.this-flake.pytorch-packages; in
 #   pp.concretise {
 #     inherit pkgs;
-#     mlPackages = with pp; [ "causal-conv1d" ];  # torch is implied automatically
+#     mlPackages = with pp; [ causal-conv1d ];  # torch is implied automatically
 #     python   = "3.13";
 #     cuda     = "12.8";
 #   };
@@ -42,6 +42,17 @@ let
 
   # Changelog URL template (receives the resolved version string).
   mkChangelog = v: "https://github.com/Dao-AILab/causal-conv1d/releases/tag/v${v}";
+
+  # ── overrideInfo constructor ───────────────────────────────────────────────
+  # Builds the common context attrset consumed by override.nix and
+  # override-source.nix.  Called once per buildBin / buildSource invocation
+  # with the concretise-supplied pkgs, cudaPackages, resolved version, and deps.
+  mkOverrideInfo = { pkgs, cudaPackages, version, resolvedDeps }: {
+    inherit pkgs cudaPackages pname srcOwner srcRepo version;
+    basePkg   = pkgs.python3Packages.${nixpkgsAttr} or null;
+    changelog = mkChangelog version;
+    torch     = resolvedDeps.torch or null;
+  };
 
 in
 {
@@ -73,14 +84,9 @@ in
   # causal-conv1d wheels are generic across CUDA 12.x, so we always use "cu12"
   # as the cudaVersion passed to override.nix regardless of cudaLabel.
   buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
-    let
-      inherit (resolvedDeps) torch;
-    in
     import ./override.nix {
-      inherit pkgs torch pname version;
-      basePkg   = pkgs.python3Packages.${nixpkgsAttr} or null;
-      changelog = mkChangelog version;
-      cudaVersion = "cu12";
+      overrideInfo = mkOverrideInfo { inherit pkgs cudaPackages version resolvedDeps; };
+      cudaVersion  = "cu12";
       # cxx11abi defaults to "TRUE" in override.nix, matching standard pip wheels
     };
 
@@ -95,13 +101,9 @@ in
       v = hldHelpers.requireSourceHash
             "causal-conv1d" "pkgs/causal-conv1d" ./source-hashes
             { inherit version cudaLabel; };
-      inherit (resolvedDeps) torch;
     in
     # (import ../../nix-retry-wrapper/inject-wrappers.nix wrappers)  # re-enable wrappers
     import ./override-source.nix {
-      inherit pkgs cudaPackages torch pname srcOwner srcRepo;
-      version   = v;
-      basePkg   = pkgs.python3Packages.${nixpkgsAttr} or null;
-      changelog = mkChangelog v;
+      overrideInfo = mkOverrideInfo { inherit pkgs cudaPackages resolvedDeps; version = v; };
     };
 }
