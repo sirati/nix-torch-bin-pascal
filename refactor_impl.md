@@ -1,3 +1,38 @@
+## Shared override-source.nix boilerplate
+
+`causal-conv1d/override-source.nix`, `flash-attn/override-source.nix`, and `mamba-ssm/override-source.nix` share substantial structure:
+- `srcInfo` import pattern (`import (./source-hashes + "/v${version}.nix")`) with `owner`/`repo` fallbacks
+- `pyproject = true` + `pkgs.fetchFromGitHub` using `srcInfo.rev`/`srcInfo.hash`
+- `postPatch` removing torch from `[build-system] requires` (causal-conv1d and mamba-ssm; flash-attn does not need this)
+- identical `build-system` list (`setuptools`, `ninja`, `cuda_nvcc`)
+- identical `nativeBuildInputs` (`pkgs.which`)
+- identical `buildInputs` from `cudaPackages` (cuda-conv1d/mamba share the exact same list; flash-attn has one extra: `libcurand`)
+- `env` block setting `CUDA_HOME` and a per-package `FORCE_BUILD` env var
+- boilerplate `doCheck = false`, `pythonImportsCheck`, `meta`
+
+Extract a shared Nix helper (e.g. `source-build-helpers.nix` at the repo root or under `concretise/`) that provides a `buildSourcePackage` function taking:
+- `pname`, `version`, `srcInfo`, `fetchSubmodules ? false`
+- `torch`, `cudaPackages`
+- `extraBuildInputs ? []` (for flash-attn's `libcurand`)
+- `dependencies` (runtime Python deps beyond torch)
+- `forceBuildEnvVar` (e.g. `"CAUSAL_CONV1D_FORCE_BUILD"`)
+- `extraEnv ? {}`, `postPatch ? ""`, `meta`, `pythonImportsCheck`
+
+Each `override-source.nix` then becomes a ~20-line thin wrapper.
+
+## HLD Python package dependency resolution
+
+Currently, packages like `einops`, `transformers`, and `triton` are hardcoded as `pkgs.python3Packages.<name>` directly inside `override-source.nix` and `override.nix`.  This causes version conflicts (e.g. `pkgs.python3Packages.triton` 3.5.1 vs torch 2.10's propagated triton 3.6.0) and requires editing override files whenever a new HLD is added for a formerly-nixpkgs package.
+
+Design: each HLD declares its non-HLD Python dependencies by name in a new `pythonDeps` field (list of strings, e.g. `[ "einops" "transformers" "triton" ]`).  During concretisation, dependency resolution proceeds in three passes:
+1. Check if a peer HLD exists in the scope for that name (fix-point already resolves these).
+2. Check if any already-concretised HLD has set the package via a future `providePythonPackage` mechanism.
+3. Fall back to `pkgs.python3Packages.<name>`.
+
+This means adding an HLD for e.g. `triton` later automatically supersedes the nixpkgs fallback for all packages declaring `"triton"` in `pythonDeps`, with zero changes to other HLDs.
+
+As a byproduct, once `pythonDeps` is resolved per-HLD, the `buildBin` / `buildSource` implementations no longer need to manually thread through `pkgs.python3Packages.*` calls — `concretise` can inject a `resolvedPythonDeps` attrset alongside `resolvedDeps`, and the override files can consume it directly.  This further reduces per-package boilerplate.
+
 ## Python-defined version constraints script
 
 The `versionConstraints` HLD field and merging logic in `concretise/default.nix` are in place, but no packages currently populate the field and no tooling exists to generate it.

@@ -24,7 +24,7 @@ Steps:
 5. For each HLD: pick latest version satisfying constraints; call `canBuildBin`; dispatch to `buildBin` or `buildSource`; accumulate `resolvedDeps`.
 6. Build Python environment with cross-concretise mixing detection via `checkedWithPackages`.
 
-Version-scanning helpers live in [`concretise/hld-helpers.nix`](concretise/hld-helpers.nix): `getVersionsFromCudaFiles` (torch layout: one file per cuda label), `getVersionsFromVersionFiles` (flash-attn / causal-conv1d layout: one file per package version).
+Version-scanning helpers live in [`concretise/hld-helpers.nix`](concretise/hld-helpers.nix): `getVersionsFromCudaFiles` (torch layout: one file per cuda label), `getVersionsFromVersionFiles` (flash-attn / causal-conv1d layout: one file per package version).  Also provides `canBuildBinFromVersionFiles` (shared `canBuildBin` for version-file packages; used by flash-attn, causal-conv1d, mamba-ssm) and `requireSourceHash` (shared `buildSource` pre-flight that validates version non-null and source-hashes file exists, returning the validated version string or throwing a descriptive error).
 
 ## Hash and wheel data generation
 

@@ -38,17 +38,6 @@ in
 # the only runtime difference is which cuDNN / cuTENSOR libraries are present.
 (pkgs.python3Packages.torch-bin.override {
   inherit cudaPackages;
-  in
-  # Override cudaPackages and wheel source on the upstream torch-bin derivation.
-  # The same pre-built wheel works across regular and Pascal CUDA variants;
-  # the only runtime difference is which cuDNN / cuTENSOR libraries are present.
-  (pkgs.python3Packages.torch-bin.override {
-    inherit cudaPackages;
-  }).overrideAttrs (old: {
-    version = torchVersion;
-    src     = pkgs.fetchurl wheelData;
-  })
-
 }).overrideAttrs (old: {
   version = torchVersion;
   src     = pkgs.fetchurl wheelData;
