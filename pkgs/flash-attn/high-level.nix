@@ -23,6 +23,28 @@
 # Fail early if the caller passed something other than a high-level derivation.
 assert hldHelpers.isHLD torch;
 
+let
+  # ── Package identity ───────────────────────────────────────────────────────
+  # Centralised here so override.nix and override-source.nix never hardcode
+  # package-specific strings.
+
+  # Python / PyPI package name (used as pname in derivations).
+  # NOTE: differs from the HLD packageName "flash-attn".
+  pname = "flash-attention";
+
+  # GitHub source coordinates.  Provide defaults; override-source.nix reads
+  # srcInfo.owner / srcInfo.repo first and falls back to these.
+  srcOwner = "Dao-AILab";
+  srcRepo  = "flash-attention";
+
+  # Attribute name in pkgs.python3Packages for the upstream nixpkgs derivation.
+  # NOTE: differs from pname — nixpkgs uses "flash-attn".
+  nixpkgsAttr = "flash-attn";
+
+  # Changelog URL template (receives the resolved version string).
+  mkChangelog = v: "https://github.com/Dao-AILab/flash-attention/releases/tag/v${v}";
+
+in
 {
   # ── Binary availability ────────────────────────────────────────────────────
   # flash-attn uses per-version files: binary-hashes/v{version}.nix
@@ -58,9 +80,10 @@ assert hldHelpers.isHLD torch;
       inherit (resolvedDeps) torch;
     in
     import ./override.nix {
-      inherit pkgs torch;
-      flashAttnVersion = version;
-      cudaVersion      = "cu12";
+      inherit pkgs torch pname version;
+      basePkg   = pkgs.python3Packages.${nixpkgsAttr} or null;
+      changelog = mkChangelog version;
+      cudaVersion = "cu12";
       # cxx11abi defaults to "TRUE" in override.nix, matching standard pip wheels
     };
 
@@ -78,7 +101,9 @@ assert hldHelpers.isHLD torch;
     in
     # (import ../../nix-retry-wrapper/inject-wrappers.nix wrappers)  # re-enable wrappers
     import ./override-source.nix {
-      inherit pkgs cudaPackages torch;
-      flashAttnVersion = v;
+      inherit pkgs cudaPackages torch pname srcOwner srcRepo;
+      version   = v;
+      basePkg   = pkgs.python3Packages.${nixpkgsAttr} or null;
+      changelog = mkChangelog v;
     };
 }

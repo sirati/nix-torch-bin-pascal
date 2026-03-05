@@ -10,8 +10,11 @@
 #   • buildInputs: the five standard CUDA libs (plus optional extras)
 #   • env: optional CUDA_HOME and optional FORCE_BUILD env-var (plus extras)
 #   • doCheck = false
+#   • meta composed from the upstream nixpkgs derivation (basePkg) +
+#     "(built from source)" suffix + sourceProvenance override
+#   • pythonImportsCheck derived from pname when not explicitly supplied
 #
-# Each override-source.nix becomes a ~20-line thin wrapper that:
+# Each override-source.nix becomes a thin wrapper that:
 #   1. imports this file with `{ inherit pkgs; }`
 #   2. imports its own source-hashes/v{version}.nix into srcInfo
 #   3. calls buildSourcePackage with only the per-package differences
@@ -30,16 +33,26 @@
 #   pname                     Package name, e.g. "causal-conv1d".
 #   version                   Version string, e.g. "1.6.0".
 #   srcInfo                   Attrset imported from source-hashes/v{ver}.nix.
-#                             Must carry .rev and .hash.  .owner/.repo are read
-#                             via srcOwner/srcRepo (see below).
+#                             Must carry .rev and .hash.
 #   srcOwner                  GitHub owner string (caller applies or-default).
 #   srcRepo                   GitHub repo string (caller applies or-default).
 #   torch                     Concrete torch derivation (resolvedDeps."torch").
 #   cudaPackages              CUDA package set (already configured by concretise).
-#   pythonImportsCheck        List of Python module names to import-check.
-#   meta                      meta attrset (caller constructs the full value).
 #
-#   OPTIONAL (have sensible defaults)
+#   OPTIONAL – meta
+#   basePkg                   The upstream nixpkgs derivation for this package
+#                             (e.g. pkgs.python3Packages."causal-conv1d").
+#                             When non-null, its .meta is used as the base;
+#                             homepage, license, platforms etc. are inherited
+#                             automatically and need not be repeated here.
+#                             Default: null (meta built from extraMeta alone).
+#   changelog                 Changelog URL string for this exact version.
+#                             Merged into the final meta when non-null.
+#                             Default: null.
+#   extraMeta                 Attrset merged last into the final meta, allowing
+#                             per-package overrides of any field.  Default: {}.
+#
+#   OPTIONAL – build
 #   fetchSubmodules           bool; default false.  Set true for flash-attn.
 #   postPatch                 Shell script string; default "".
 #   preConfigure              Shell script string; default "".
@@ -53,6 +66,13 @@
 #   useCudaHome               bool; default true.  Set false for flash-attn (which
 #                             sets CC/CXX/TORCH_CUDA_ARCH_LIST instead).
 #   extraEnv                  Additional env entries merged last; default {}.
+#
+#   OPTIONAL – checks
+#   pythonImportsCheck        List of Python module names to import-check.
+#                             Default: null → [ (pname with "-" replaced by "_") ]
+#                             e.g. "causal-conv1d" → [ "causal_conv1d" ]
+#                             Override explicitly when the module name differs
+#                             (e.g. pname "flash-attention" → [ "flash_attn" ]).
 
 { pkgs }:
 
@@ -69,10 +89,13 @@ in
     , srcRepo
     , torch
     , cudaPackages
-    , pythonImportsCheck
-    , meta
 
-      # Optional
+      # Optional – meta
+    , basePkg   ? null
+    , changelog ? null
+    , extraMeta ? {}
+
+      # Optional – build
     , fetchSubmodules          ? false
     , postPatch                ? ""
     , preConfigure             ? ""
@@ -82,8 +105,37 @@ in
     , forceBuildEnvVar         ? null
     , useCudaHome              ? true
     , extraEnv                 ? {}
+
+      # Optional – checks
+    , pythonImportsCheck ? null
     }:
 
+    let
+      # ── Meta composition ──────────────────────────────────────────────────
+      # Start from the upstream nixpkgs derivation's meta (if provided), then
+      # overlay the source-build-specific fields, then apply caller overrides.
+      baseMeta = if basePkg != null then basePkg.meta else {};
+
+      meta =
+        baseMeta
+        // {
+          description =
+            "${baseMeta.description or pname} (built from source)";
+          sourceProvenance = with lib.sourceTypes; [ fromSource ];
+        }
+        // lib.optionalAttrs (changelog != null) { inherit changelog; }
+        // extraMeta;
+
+      # ── pythonImportsCheck ────────────────────────────────────────────────
+      # Default: replace hyphens with underscores in pname.
+      # Override explicitly when the importable module name differs
+      # (e.g. pname "flash-attention" must pass [ "flash_attn" ]).
+      importsCheck =
+        if pythonImportsCheck != null
+        then pythonImportsCheck
+        else [ (builtins.replaceStrings [ "-" ] [ "_" ] pname) ];
+
+    in
     pkgs.python3Packages.buildPythonPackage {
       inherit pname version;
 
@@ -146,6 +198,8 @@ in
       # No test suite that can run without a GPU.
       doCheck = false;
 
-      inherit pythonImportsCheck meta;
+      pythonImportsCheck = importsCheck;
+
+      inherit meta;
     };
 }

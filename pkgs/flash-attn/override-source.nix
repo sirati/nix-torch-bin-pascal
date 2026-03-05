@@ -5,17 +5,27 @@
 # is ABI-compatible with the resolved torch version.
 #
 # Arguments:
-#   pkgs              - nixpkgs package set; pkgs.python3 must be the target
-#                       Python interpreter (set by concretise via pkgsForBuild)
-#   torch             - the concrete torch derivation from resolvedDeps."torch"
-#   cudaPackages      - CUDA package set (already configured for Pascal or
-#                       vanilla by concretise)
-#   flashAttnVersion  - version string to build, e.g. "2.8.3"
+#   pkgs        - nixpkgs package set; pkgs.python3 must be the target
+#                 Python interpreter (set by concretise via pkgsForBuild)
+#   torch       - the concrete torch derivation from resolvedDeps."torch"
+#   cudaPackages - CUDA package set (already configured for Pascal or
+#                  vanilla by concretise)
+#   version     - version string to build, e.g. "2.8.3"
+#   pname       - Python package name, passed from high-level.nix
+#   srcOwner    - GitHub owner, passed from high-level.nix
+#   srcRepo     - GitHub repo, passed from high-level.nix
+#   basePkg     - upstream nixpkgs derivation for meta inheritance (may be null)
+#   changelog   - changelog URL for this version (may be null)
 
 { pkgs
 , torch
 , cudaPackages
-, flashAttnVersion
+, version
+, pname
+, srcOwner
+, srcRepo
+, basePkg   ? null
+, changelog ? null
 }:
 
 let
@@ -25,9 +35,7 @@ let
   buildSourcePackage =
     (import ../../concretise/source-build-helpers.nix { inherit pkgs; }).buildSourcePackage;
 
-  srcInfo  = import (./source-hashes + "/v${flashAttnVersion}.nix");
-  srcOwner = srcInfo.owner or "Dao-AILab";
-  srcRepo  = srcInfo.repo  or "flash-attention";
+  srcInfo = import (./source-hashes + "/v${version}.nix");
 
   # TORCH_CUDA_ARCH_LIST: semicolon-separated CUDA compute capabilities.
   # Read from cudaPackages.flags.cudaCapabilities (nixpkgs CUDA infrastructure).
@@ -35,10 +43,11 @@ let
 
 in
 buildSourcePackage {
-  pname   = "flash-attention";
-  version = flashAttnVersion;
+  inherit pname version torch cudaPackages basePkg changelog;
 
-  inherit srcInfo srcOwner srcRepo torch cudaPackages;
+  srcOwner = srcInfo.owner or srcOwner;
+  srcRepo  = srcInfo.repo  or srcRepo;
+  inherit srcInfo;
 
   # flash-attn bundles cutlass and other dependencies as git submodules.
   fetchSubmodules = true;
@@ -70,15 +79,7 @@ buildSourcePackage {
     TORCH_CUDA_ARCH_LIST = lib.concatStringsSep ";" cudaCapabilities;
   };
 
+  # pythonImportsCheck: pname is "flash-attention", which would derive
+  # "flash_attention" — incorrect.  Override explicitly.
   pythonImportsCheck = [ "flash_attn" ];
-
-  meta = {
-    description      = "Official implementation of FlashAttention and FlashAttention-2 (built from source)";
-    homepage         = "https://github.com/Dao-AILab/flash-attention/";
-    changelog        = "https://github.com/Dao-AILab/flash-attention/releases/tag/${srcInfo.rev}";
-    license          = lib.licenses.bsd3;
-    platforms        = [ "x86_64-linux" "aarch64-linux" ];
-    broken           = false;
-    sourceProvenance = with lib.sourceTypes; [ fromSource ];
-  };
 }

@@ -24,6 +24,27 @@
 assert hldHelpers.isHLD torch;
 assert hldHelpers.isHLD causal-conv1d;
 
+let
+  # ── Package identity ───────────────────────────────────────────────────────
+  # Centralised here so override.nix and override-source.nix never hardcode
+  # package-specific strings.
+
+  # Python / PyPI package name (used as pname in derivations).
+  pname = "mamba-ssm";
+
+  # GitHub source coordinates.  Provide defaults; override-source.nix reads
+  # srcInfo.owner / srcInfo.repo first and falls back to these.
+  srcOwner = "state-spaces";
+  srcRepo  = "mamba";
+
+  # Attribute name in pkgs.python3Packages for the upstream nixpkgs derivation.
+  # Used to inherit meta (homepage, license, platforms, …) automatically.
+  nixpkgsAttr = "mamba-ssm";
+
+  # Changelog URL template (receives the resolved version string).
+  mkChangelog = v: "https://github.com/state-spaces/mamba/releases/tag/v${v}";
+
+in
 {
   # ── Binary availability ────────────────────────────────────────────────────
   # mamba-ssm uses per-version files: binary-hashes/v{version}.nix
@@ -58,9 +79,10 @@ assert hldHelpers.isHLD causal-conv1d;
       inherit (resolvedDeps) torch causal-conv1d;
     in
     import ./override.nix {
-      inherit pkgs torch causal-conv1d;
-      mambaVersion = version;
-      cudaVersion  = "cu12";
+      inherit pkgs torch causal-conv1d pname version;
+      basePkg   = pkgs.python3Packages.${nixpkgsAttr} or null;
+      changelog = mkChangelog version;
+      cudaVersion = "cu12";
       # cxx11abi defaults to "TRUE" in override.nix, matching standard pip wheels
     };
 
@@ -78,7 +100,9 @@ assert hldHelpers.isHLD causal-conv1d;
     in
     # (import ../../nix-retry-wrapper/inject-wrappers.nix wrappers)  # re-enable wrappers
     import ./override-source.nix {
-      inherit pkgs cudaPackages torch causal-conv1d;
-      mambaVersion = v;
+      inherit pkgs cudaPackages torch causal-conv1d pname srcOwner srcRepo;
+      version   = v;
+      basePkg   = pkgs.python3Packages.${nixpkgsAttr} or null;
+      changelog = mkChangelog v;
     };
 }

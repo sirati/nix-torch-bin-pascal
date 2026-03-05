@@ -1,3 +1,5 @@
+
+
 ## HLD Python package dependency resolution
 
 Currently, packages like `einops`, `transformers`, and `triton` are hardcoded as `pkgs.python3Packages.<name>` directly inside `override-source.nix` and `override.nix`.  This causes version conflicts (e.g. `pkgs.python3Packages.triton` 3.5.1 vs torch 2.10's propagated triton 3.6.0) and requires editing override files whenever a new HLD is added for a formerly-nixpkgs package.

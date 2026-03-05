@@ -22,42 +22,34 @@
 #       wheels; attempting to use it will raise an error at evaluation time.
 #
 # Arguments:
-#   pkgs              - nixpkgs package set (pkgs.python3 must be the target Python)
-#   torch             - the torch derivation to depend on
-#   flashAttnVersion  - flash-attention version string (default: "2.8.3")
-#   cudaVersion       - CUDA version the wheel was compiled against (default: "cu12")
-#                       Used as the top-level key in binary-hashes/v{version}.nix.
-#                       Typical values: "cu12", "cu126", "cu128".
-#   cxx11abi          - "TRUE" or "FALSE" (default: "TRUE", matching standard
-#                       PyTorch pip wheels on Linux)
+#   pkgs        - nixpkgs package set (pkgs.python3 must be the target Python)
+#   torch       - the torch derivation to depend on
+#   pname       - Python package name, passed from high-level.nix
+#   version     - flash-attention version string
+#   basePkg     - upstream nixpkgs derivation for meta inheritance (may be null)
+#   changelog   - changelog URL for this version (may be null)
+#   cudaVersion - CUDA version the wheel was compiled against (default: "cu12")
+#   cxx11abi    - "TRUE" or "FALSE" (default: "TRUE", matching standard
+#                 PyTorch pip wheels on Linux)
 
 { pkgs
 , torch
-, flashAttnVersion ? "2.8.3"
-, cudaVersion      ? "cu12"
-, cxx11abi         ? "TRUE"
+, pname
+, version
+, basePkg    ? null
+, changelog  ? null
+, cudaVersion ? "cu12"
+, cxx11abi   ? "TRUE"
 }:
 
 let
-  inherit (pkgs) lib;
   wheelHelpers = import ../../wheel-helpers.nix { inherit pkgs; };
 in
 wheelHelpers.buildBinWheel {
-  pname            = "flash-attn";
-  version          = flashAttnVersion;
-  binaryHashesFile = ./binary-hashes + "/v${flashAttnVersion}.nix";
-  inherit torch cudaVersion cxx11abi;
-
+  inherit pname version torch cudaVersion cxx11abi basePkg changelog;
+  binaryHashesFile   = ./binary-hashes + "/v${version}.nix";
   extraDependencies  = [ pkgs.python3Packages.einops ];
+  # pythonImportsCheck: pname is "flash-attention", which would derive
+  # "flash_attention" — incorrect.  Override explicitly.
   pythonImportsCheck = [ "flash_attn" ];
-
-  meta = {
-    description      = "Official implementation of FlashAttention and FlashAttention-2 (pre-built wheel)";
-    homepage         = "https://github.com/Dao-AILab/flash-attention/";
-    changelog        = "https://github.com/Dao-AILab/flash-attention/releases/tag/v${flashAttnVersion}";
-    license          = lib.licenses.bsd3;
-    platforms        = [ "x86_64-linux" "aarch64-linux" ];
-    broken           = false;
-    sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
-  };
 }

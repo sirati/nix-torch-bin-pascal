@@ -5,37 +5,44 @@
 # is ABI-compatible with the resolved torch version.
 #
 # Arguments:
-#   pkgs          - nixpkgs package set; pkgs.python3 must be the target
-#                   Python interpreter (set by concretise via pkgsForBuild)
-#   torch         - the concrete torch derivation from resolvedDeps."torch"
+#   pkgs        - nixpkgs package set; pkgs.python3 must be the target
+#                 Python interpreter (set by concretise via pkgsForBuild)
+#   torch       - the concrete torch derivation from resolvedDeps."torch"
 #   causal-conv1d - the concrete causal-conv1d derivation from resolvedDeps."causal-conv1d"
-#   cudaPackages  - CUDA package set (already configured for Pascal or
-#                   vanilla by concretise)
-#   mambaVersion  - version string to build, e.g. "2.3.0"
+#   cudaPackages - CUDA package set (already configured for Pascal or
+#                  vanilla by concretise)
+#   version     - version string to build, e.g. "2.3.0"
+#   pname       - Python package name, passed from high-level.nix
+#   srcOwner    - GitHub owner, passed from high-level.nix
+#   srcRepo     - GitHub repo, passed from high-level.nix
+#   basePkg     - upstream nixpkgs derivation for meta inheritance (may be null)
+#   changelog   - changelog URL for this version (may be null)
 
 { pkgs
 , torch
 , causal-conv1d
 , cudaPackages
-, mambaVersion
+, version
+, pname
+, srcOwner
+, srcRepo
+, basePkg   ? null
+, changelog ? null
 }:
 
 let
-  inherit (pkgs) lib;
-
   buildSourcePackage =
     (import ../../concretise/source-build-helpers.nix { inherit pkgs; }).buildSourcePackage;
 
-  srcInfo  = import (./source-hashes + "/v${mambaVersion}.nix");
-  srcOwner = srcInfo.owner or "state-spaces";
-  srcRepo  = srcInfo.repo  or "mamba";
+  srcInfo = import (./source-hashes + "/v${version}.nix");
 
 in
 buildSourcePackage {
-  pname   = "mamba-ssm";
-  version = mambaVersion;
+  inherit pname version torch cudaPackages basePkg changelog;
 
-  inherit srcInfo srcOwner srcRepo torch cudaPackages;
+  srcOwner = srcInfo.owner or srcOwner;
+  srcRepo  = srcInfo.repo  or srcRepo;
+  inherit srcInfo;
 
   # The upstream pyproject.toml lists torch under [build-system] requires.
   # Our torch derivation is the real PyPI binary wheel whose dist-info carries
@@ -70,15 +77,5 @@ buildSourcePackage {
     pkgs.python3Packages.transformers
   ];
 
-  pythonImportsCheck = [ "mamba_ssm" ];
-
-  meta = {
-    description      = "Mamba state space model (built from source)";
-    homepage         = "https://github.com/state-spaces/mamba";
-    changelog        = "https://github.com/state-spaces/mamba/releases/tag/v${mambaVersion}";
-    license          = lib.licenses.asl20;
-    platforms        = [ "x86_64-linux" "aarch64-linux" ];
-    broken           = false;
-    sourceProvenance = with lib.sourceTypes; [ fromSource ];
-  };
+  # pythonImportsCheck: default derives "mamba_ssm" from pname — correct.
 }

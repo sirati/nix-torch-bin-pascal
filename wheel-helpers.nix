@@ -40,9 +40,22 @@ in
   #   binaryHashesFile  - Path to the v{version}.nix binary-hashes file
   #                       (e.g. ./binary-hashes + "/v${version}.nix")
   #   torch             - Resolved torch derivation (must have .version attribute)
-  #   meta              - Nix meta attrset (description, homepage, license, …)
   #
-  # Optional arguments:
+  # Optional arguments – meta:
+  #   basePkg            - The upstream nixpkgs derivation for this package
+  #                        (e.g. pkgs.python3Packages."causal-conv1d").
+  #                        When non-null, its .meta is used as the base;
+  #                        homepage, license, platforms etc. are inherited
+  #                        automatically.  Default: null.
+  #   changelog          - Changelog URL string for this exact version.
+  #                        Merged into the final meta when non-null.  Default: null.
+  #   extraMeta          - Attrset merged last into the final meta, allowing
+  #                        per-package overrides of any field.  Default: {}.
+  #   meta               - Full explicit meta attrset.  When provided it is used
+  #                        as-is and basePkg/changelog/extraMeta are ignored.
+  #                        Default: null (meta composed from basePkg etc.).
+  #
+  # Optional arguments – build:
   #   cudaVersion        - Top-level key in the hash file (default: "cu12")
   #   cxx11abi           - "TRUE" or "FALSE" (default: "TRUE")
   #                        Set to "FALSE" only for PyTorch built with
@@ -50,17 +63,21 @@ in
   #   extraDependencies  - Additional runtime Python dependencies beyond torch
   #                        (default: [])
   #   pythonImportsCheck - Override the list of module names to check on import.
-  #                        Pass [] to skip entirely.  Defaults to [ pname ].
+  #                        Pass [] to skip entirely.
+  #                        Default: null → [ (pname with "-" replaced by "_") ]
   buildBinWheel =
     { pname
     , version
     , binaryHashesFile
     , torch
-    , meta
+    , meta               ? null
+    , basePkg            ? null
+    , changelog          ? null
+    , extraMeta          ? {}
     , cudaVersion        ? "cu12"
     , cxx11abi           ? "TRUE"
     , extraDependencies  ? []
-    , pythonImportsCheck ? null   # null → [ pname ]
+    , pythonImportsCheck ? null   # null → [ (pname with "-" → "_") ]
     }:
     let
       _assertLinux =
@@ -130,10 +147,30 @@ in
           # compatHasWheel already verified precx11abi exists.
           wheelLeaf.precx11abi;
 
+      # ── pythonImportsCheck ────────────────────────────────────────────────
       imports =
         if pythonImportsCheck != null
         then pythonImportsCheck
         else [ (builtins.replaceStrings [ "-" ] [ "_" ] pname) ];
+
+      # ── Meta composition ──────────────────────────────────────────────────
+      # If an explicit meta attrset is passed, use it verbatim (backwards
+      # compat).  Otherwise compose from the upstream nixpkgs derivation's meta
+      # (basePkg.meta), overlaying the pre-built-wheel-specific fields, then
+      # applying changelog and any extraMeta overrides.
+      finalMeta =
+        if meta != null
+        then meta
+        else
+          let baseMeta = if basePkg != null then basePkg.meta else {};
+          in baseMeta
+             // {
+               description =
+                 "${baseMeta.description or pname} (pre-built wheel)";
+               sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
+             }
+             // lib.optionalAttrs (changelog != null) { inherit changelog; }
+             // extraMeta;
 
     in
     assert _assertLinux;
@@ -157,6 +194,6 @@ in
 
       pythonImportsCheck = imports;
 
-      inherit meta;
+      meta = finalMeta;
     };
 }
