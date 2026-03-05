@@ -35,7 +35,7 @@ let
       pytorchScope."causal-conv1d"
     ];
     python                  = "3.13";
-    cuda                    = "12.6";
+    cuda                    = "12.8";
     torch                   = "2.10";
     pascal                  = true;
     allowBuildingFromSource = true;

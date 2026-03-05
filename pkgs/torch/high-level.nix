@@ -15,7 +15,7 @@
 #     inherit pkgs;
 #     mlPackages = with pp; [ torch ];
 #     python   = "3.13";
-#     cuda     = "12.6";
+#     cuda     = "12.8";
 #   };
 
 { hldHelpers }:

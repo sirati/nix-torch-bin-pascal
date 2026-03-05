@@ -11,7 +11,7 @@
 #
 #   mlPackages            – list of HLD values you want installed
 #   python                – Python minor version string ("3.11"/"3.12"/"3.13")
-#   cuda                  – CUDA major.minor string ("12.6" or "12.8")
+#   cuda                  – CUDA major.minor string ("12.8" or "12.6")
 #   torch                 – torch major.minor string ("2.8"/"2.9"/"2.10")
 #   pascal                – enable Pascal (sm_60/sm_61) GPU support (default: false)
 #                           WARNING: Pascal support is not validated per library –

@@ -151,4 +151,79 @@
         (compat: builtins.hasAttr pyVer cudaSection.${compat})
         (builtins.attrNames cudaSection)
     ) versions;
+
+  # --------------------------------------------------------------------------
+  # canBuildBinFromVersionFiles
+  #
+  # Shared canBuildBin implementation for packages whose binary-hashes/
+  # directory uses per-version files (v{version}.nix), where each file is
+  # keyed by cudaVersion label and then by torch-compat string.
+  #
+  # binaryHashesDir : path to the binary-hashes/ directory
+  # args            : { resolvedDeps, version, cudaLabel, ... }
+  #
+  # Returns true iff the resolved torch major.minor does not exceed the
+  # highest torch-compat key available for the given cuda label (with "cu12"
+  # as a generic fallback).  Returns false when no cuda section is found,
+  # which causes concretise to fall back to a source build.
+  # --------------------------------------------------------------------------
+  canBuildBinFromVersionFiles = binaryHashesDir: { resolvedDeps, version, cudaLabel, ... }:
+    let
+      torchVersion    = resolvedDeps."torch".version;
+      mm              = builtins.match "([0-9]+[.][0-9]+).*" torchVersion;
+      torchMajorMinor = builtins.elemAt mm 0;
+
+      versionFile = import (binaryHashesDir + "/v${version}.nix");
+      cudaSection =
+        if      builtins.hasAttr cudaLabel versionFile then versionFile.${cudaLabel}
+        else if builtins.hasAttr "cu12"    versionFile then versionFile."cu12"
+        else {};
+
+      availableCompat = builtins.attrNames cudaSection;
+
+      sortedCompat = builtins.sort
+        (a: b: builtins.compareVersions a b < 0)
+        availableCompat;
+
+      maxCompat = if sortedCompat == []
+        then "0.0"
+        else builtins.elemAt sortedCompat (builtins.length sortedCompat - 1);
+    in
+    builtins.compareVersions torchMajorMinor maxCompat <= 0;
+
+  # --------------------------------------------------------------------------
+  # requireSourceHash
+  #
+  # Shared buildSource pre-flight check used by every high-level.nix
+  # buildSource implementation.  Validates that:
+  #   1. version is non-null (i.e. at least one binary-hashes entry exists
+  #      for the requested cuda label so we know which version to build).
+  #   2. The corresponding source-hashes/v{version}.nix file exists on disk.
+  #
+  # On success returns the validated version string so it can be bound with
+  # `let v = hldHelpers.requireSourceHash ... args;`.
+  # On failure throws a human-readable error pointing to the fix.
+  #
+  # pkgName        : human-readable package name, e.g. "causal-conv1d"
+  # pkgRelPath     : repo-relative path string for error messages,
+  #                  e.g. "pkgs/causal-conv1d"
+  # sourceHashesDir: Nix path to the source-hashes/ directory, e.g. ./source-hashes
+  # args           : { version, cudaLabel, ... }
+  # --------------------------------------------------------------------------
+  requireSourceHash = pkgName: pkgRelPath: sourceHashesDir: { version, cudaLabel, ... }:
+    let
+      v = if version != null then version else throw (
+        "${pkgName} buildSource: version is null — no binary-hashes entry "
+        + "exists for cudaLabel '${cudaLabel}'.  Add a binary-hashes entry "
+        + "for the desired version, or run generate-hashes.py to fetch it."
+      );
+      sourceHashPath = sourceHashesDir + "/v${v}.nix";
+    in
+    if !builtins.pathExists sourceHashPath
+    then throw (
+      "${pkgName} buildSource: source-hashes/v${v}.nix does not exist. "
+      + "Run: nix-shell ${pkgRelPath}/generate-hashes.py -- "
+      + "--source-only --tag v${v}"
+    )
+    else v;
 }

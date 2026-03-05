@@ -15,7 +15,7 @@
 #     inherit pkgs;
 #     mlPackages = with pp; [ "flash-attn" ];  # torch is implied automatically
 #     python   = "3.13";
-#     cuda     = "12.6";
+#     cuda     = "12.8";
 #   };
 
 { torch, hldHelpers }:
@@ -44,34 +44,7 @@ assert hldHelpers.isHLD torch;
   #
   # This ensures torch 2.10+ always triggers a source build, since the newest
   # flash-attn pre-built wheels only cover up to torch 2.9 compat.
-  # ### TODO ### this should not be manually impl here but use the shared code, compare with other high-level.nix and properly extract shared code
-  canBuildBin = { resolvedDeps, version, cudaLabel, ... }:
-    let
-      torchVersion    = resolvedDeps."torch".version;
-      mm              = builtins.match "([0-9]+[.][0-9]+).*" torchVersion;
-      torchMajorMinor = builtins.elemAt mm 0;
-
-      # Load the full binary-hashes file for this version.
-      # Prefer the exact cudaLabel, fall back to the generic "cu12" key.
-      versionFile = import (./binary-hashes + "/v${version}.nix");
-      cudaSection =
-        if      builtins.hasAttr cudaLabel versionFile then versionFile.${cudaLabel}
-        else if builtins.hasAttr "cu12"    versionFile then versionFile."cu12"
-        else {};
-
-      availableCompat = builtins.attrNames cudaSection;
-
-      sortedCompat = builtins.sort
-        (a: b: builtins.compareVersions a b < 0)
-        availableCompat;
-
-      maxCompat = if sortedCompat == []
-        then "0.0"
-        else builtins.elemAt sortedCompat (builtins.length sortedCompat - 1);
-    in
-    # Binary is compatible iff the resolved torch major.minor does not exceed
-    # the highest compat key we have a wheel for.
-    builtins.compareVersions torchMajorMinor maxCompat <= 0;
+  canBuildBin = hldHelpers.canBuildBinFromVersionFiles ./binary-hashes;
 
   # ── Build from pre-built wheel ─────────────────────────────────────────────
   #
@@ -98,21 +71,9 @@ assert hldHelpers.isHLD torch;
   # allowBuildingFromSource = true.
   buildSource = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
     let
-      v = if version != null then version else throw (
-        "flash-attn buildSource: version is null — no binary-hashes entry "
-        + "exists for cudaLabel '${cudaLabel}'.  Add a binary-hashes entry "
-        + "for the desired version, or run generate-hashes.py to fetch it."
-      );
-      sourceHashPath = ./source-hashes + "/v${v}.nix";
-    in
-    if !builtins.pathExists sourceHashPath
-    then throw (
-      "flash-attn buildSource: source-hashes/v${v}.nix does not exist. "
-      + "Run: nix-shell pkgs/flash-attn/generate-hashes.py -- "
-      + "--source-only --tag v${v}"
-    )
-    else
-    let
+      v = hldHelpers.requireSourceHash
+            "flash-attn" "pkgs/flash-attn" ./source-hashes
+            { inherit version cudaLabel; };
       inherit (resolvedDeps) torch;
     in
     # (import ../../nix-retry-wrapper/inject-wrappers.nix wrappers)  # re-enable wrappers

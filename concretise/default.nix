@@ -35,7 +35,7 @@
 #     result = pp.concretise {
 #       inherit pkgs;
 #       python     = "3.13";
-#       cuda       = "12.6";
+#       cuda       = "12.8";
 #       pascal     = false;
 #       mlPackages = with pp; [ flash-attn causal-conv1d ];
 #     };
