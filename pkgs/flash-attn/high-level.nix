@@ -97,10 +97,18 @@ assert hldHelpers.isHLD torch;
     let
       v = if version != null then version else throw (
         "flash-attn buildSource: version is null — no binary-hashes entry "
-        + "exists for cudaLabel '${cudaLabel}'.  Add a source-hashes entry "
-        + "for the desired version."
+        + "exists for cudaLabel '${cudaLabel}'.  Add a binary-hashes entry "
+        + "for the desired version, or run generate-hashes.py to fetch it."
       );
+      sourceHashPath = ./source-hashes + "/v${v}.nix";
     in
+    if !builtins.pathExists sourceHashPath
+    then throw (
+      "flash-attn buildSource: source-hashes/v${v}.nix does not exist. "
+      + "Run: nix-shell pkgs/flash-attn/generate-hashes.py -- "
+      + "--source-only --tag v${v}"
+    )
+    else
     import ./override-source.nix {
       inherit pkgs cudaPackages;
       torch            = resolvedDeps."torch";

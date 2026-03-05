@@ -1,6 +1,76 @@
 # Refactor Implementation Notes
 
-## Status: steps 1–7c complete + pkgs/ refactor complete + HLD type + hldHelpers injection complete + preferBin→allowBuildingFromSource + nvidia-container key naming + canBuildBin + causal-conv1d buildSource + devShell fix + wheel-helpers extraction + generate-hashes rename + source-hashes folder + combined binary+source generator + causal-conv1d build-system fix + source_fetcher batch-clone
+## Status: steps 1–7c complete + pkgs/ refactor complete + HLD type + hldHelpers injection complete + preferBin→allowBuildingFromSource + nvidia-container key naming + canBuildBin + causal-conv1d buildSource + devShell fix + wheel-helpers extraction + generate-hashes rename + source-hashes folder + combined binary+source generator + causal-conv1d build-system fix + source_fetcher batch-clone + _checkBinAvailable canBuildBin fix + versionConstraints in hld-type + buildSource hash-existence checks
+
+---
+
+## This session
+
+### `_checkBinAvailable`: account for `canBuildBin` using pre-resolved versions
+
+**Problem**: `_checkBinAvailable` checked only whether binary-hash versions exist
+for a (cudaLabel, pyVer) pair.  It did not call `canBuildBin`, so if versions
+existed but `canBuildBin` returned false (e.g. causal-conv1d 1.6.0 with
+torch >= 2.9), the early check passed silently and the real error only fired
+later inside `buildOne`.
+
+**Fix in `concretise/default.nix`**:
+
+1. Extracted `_selectVersion hld → { allVersions, constrainedVersions, version }`
+   helper to avoid duplicating version-selection logic between `buildOne` and
+   `_checkBinAvailable`.
+
+2. Added `preResolvedVersions` — a fold over `sortedHLDs` (topological order)
+   that builds a `{ pkgName → { version = "…"; } }` map.  Because only
+   `.version` is read by `canBuildBin` implementations, a minimal stub is
+   sufficient.  Torch's stub is computed first (dep order), so
+   causal-conv1d's `canBuildBin` correctly sees the torch version when called
+   from the pre-flight check.
+
+3. `_checkBinAvailable` now calls `hld.canBuildBin { resolvedDeps =
+   preResolvedVersions; … }` for each HLD.  The error message now says e.g.:
+   ```
+   version 1.6.0 is ABI-incompatible with torch 2.10.0
+   ```
+   instead of the old "no pre-built wheel available" phrasing.
+
+4. `buildOne` refactored to use `_selectVersion` (no logic change, just
+   deduplication).
+
+Verified: evaluating the flake with `allowBuildingFromSource = false` and
+`torch = "2.10"` + causal-conv1d now throws from `_checkBinAvailable` with the
+specific torch version in the message.
+
+### `buildSource` source-hash existence check
+
+Both `pkgs/causal-conv1d/high-level.nix` and `pkgs/flash-attn/high-level.nix`
+`buildSource` functions now call `builtins.pathExists` before importing the
+source-hashes file.  If the file is absent they throw a clear message with the
+exact `generate-hashes.py` command to run, rather than a cryptic
+"file not found" Nix error.
+
+Example:
+```
+flash-attn buildSource: source-hashes/v2.8.3.nix does not exist.
+Run: nix-shell pkgs/flash-attn/generate-hashes.py -- --source-only --tag v2.8.3
+```
+
+Also fixed a wrong error-message in flash-attn `buildSource` (was saying
+"add a source-hashes entry" when it should say "add a binary-hashes entry").
+
+### `versionConstraints` added to `hld-type.nix` as a declared optional field
+
+Previously `versionConstraints` was an undocumented free-form attribute read
+via `hld.versionConstraints or {}` in `concretise/default.nix`.  It is now
+listed in `hld-type.nix`'s `fieldSpecs` with a proper description and
+`default = {}`, making it discoverable and validated like the other optional
+fields (`canBuildBin`, `data`).
+
+### `flake.nix` `pytorch-packages` output: fix outdated API example
+
+The comment block in the `pytorch-packages` output was using old argument names
+(`cudaVersion`, `isPascal`, `pythonVersion`).  Updated to the current API:
+`cuda`, `pascal`, `python`, `torch`, `allowBuildingFromSource`.
 
 ---
 
@@ -596,10 +666,11 @@ that splits organized data by version key and writes one file per version.
 
 ### Known limitations / follow-up work
 
-### `buildSource` not implemented
-All HLDs throw from `buildSource`.  No source-derivation layer exists yet.
-This is the main remaining piece of the four-derivation split described in
-`refactor_plan.md`.
+### `buildSource` for torch intentionally unsupported
+`torch/high-level.nix` throws from `buildSource`.  Building torch from source
+is explicitly out of scope per `refactor_plan.md`.  causal-conv1d and
+flash-attn both have working `buildSource` implementations with source-hash
+existence checks (see above).
 
 ### 7c mixing check is best-effort
 `checkedWithPackages` only fires when callers use `result.python.withPackages`.

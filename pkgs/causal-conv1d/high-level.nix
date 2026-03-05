@@ -98,7 +98,15 @@ assert hldHelpers.isHLD torch;
         + "exists for cudaLabel '${cudaLabel}'.  Add a source-hashes.nix entry "
         + "and a binary-hashes file for this version."
       );
+      sourceHashPath = ./source-hashes + "/v${v}.nix";
     in
+    if !builtins.pathExists sourceHashPath
+    then throw (
+      "causal-conv1d buildSource: source-hashes/v${v}.nix does not exist. "
+      + "Run: nix-shell pkgs/causal-conv1d/generate-hashes.py -- "
+      + "--source-only --tag v${v}"
+    )
+    else
     import ./override-source.nix {
       inherit pkgs cudaPackages wrappers;
       torch               = resolvedDeps."torch";

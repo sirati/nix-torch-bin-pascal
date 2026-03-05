@@ -255,10 +255,12 @@
       #
       #   result = torch-flake.pytorch-packages.concretise {
       #     inherit pkgs;
-      #     packages      = with torch-flake.pytorch-packages; [ torch flash-attn ];
-      #     cudaVersion   = "cu126";
-      #     isPascal      = true;
-      #     pythonVersion = "313";
+      #     packages                = with torch-flake.pytorch-packages; [ torch flash-attn ];
+      #     python                  = "3.13";
+      #     cuda                    = "12.6";
+      #     torch                   = "2.10";
+      #     pascal                  = true;
+      #     allowBuildingFromSource = true;
       #   };
       #
       pytorch-packages = pytorchScope // {

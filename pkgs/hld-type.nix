@@ -64,6 +64,18 @@ let
         + "constrained by resolved dep versions.";
       default = _: true;
     };
+    versionConstraints = {
+      description =
+        "attrset – static version bounds applied to dependencies during version "
+        + "selection, merged across all HLDs in the build.  Each key is a dep "
+        + "packageName; each value is { minVersion?, maxVersion? }.  concretise "
+        + "takes the stricter bound when two HLDs constrain the same dep. "
+        + "Use this when the HLD has a hard requirement that limits which "
+        + "versions of a dependency can be selected (e.g. requires torch <= 2.x "
+        + "for all versions of this package).  For ABI-level per-version binary "
+        + "compat, prefer canBuildBin instead.  Defaults to {} (no constraints).";
+      default = {};
+    };
     data = {
       description = "attrset – arbitrary package-specific metadata";
       default     = {};

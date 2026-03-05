@@ -295,22 +295,47 @@ let
     let parts = lib.splitString "." v;
     in lib.concatStringsSep "." (lib.take 2 parts);
 
-  buildOne = resolvedDeps: hld:
+  # Shared version-selection logic used by both buildOne and _checkBinAvailable.
+  # Returns { allVersions, constrainedVersions, version } for a given HLD.
+  # Having it here avoids duplicating the torch-series filter and constraint
+  # application in two places.
+  _selectVersion = hld:
     let
-      allVersionsRaw = hld.getVersions cudaLabel pyVer;
-      # For torch itself, restrict version selection to the caller-specified
-      # major.minor series.  Binary wheels are not forward-compatible across
-      # minor versions, so "latest overall" is wrong when the user has pinned
-      # a specific series.
-      allVersions =
+      allVersionsRaw      = hld.getVersions cudaLabel pyVer;
+      # For torch, restrict selection to the caller-specified major.minor series.
+      # Binary wheels are not forward-compatible across minor versions.
+      allVersions         =
         if hld.packageName == "torch"
         then lib.filter (v: _majorMinorOf v == torch) allVersionsRaw
         else allVersionsRaw;
       constrainedVersions = applyVersionConstraints hld.packageName allVersions;
       sortedVersions      = lib.sort lib.versionOlder constrainedVersions;
       version             = if sortedVersions != [] then lib.last sortedVersions else null;
+    in
+    { inherit allVersions constrainedVersions version; };
+
+  # Pre-resolved version stubs — computed once in topological order so that
+  # _checkBinAvailable can pass them as a fake resolvedDeps to canBuildBin.
+  # Each entry is a minimal attrset { version = "…"; }; canBuildBin only reads
+  # .version from its resolvedDeps argument.
+  #
+  # Because sortedHLDs is in dependency order (torch before causal-conv1d etc.),
+  # the fold here mirrors the dependency order and ensures torch's stub is
+  # present before causal-conv1d's canBuildBin is evaluated.
+  preResolvedVersions = lib.foldl'
+    (acc: hld:
+      let version = (_selectVersion hld).version;
+      in acc // { ${hld.packageName} = { inherit version; }; }
+    )
+    {}
+    sortedHLDs;
+
+  buildOne = resolvedDeps: hld:
+    let
+      sel     = _selectVersion hld;
+      version = sel.version;
       args = {
-        pkgs         = pkgsForBuild;
+        pkgs = pkgsForBuild;
         inherit cudaPackages wrappers cudaLabel resolvedDeps version;
       };
       # canBuildBin is an optional HLD field (default: always true).
@@ -336,7 +361,7 @@ let
                if c != {}
                then " (no binary version found after applying versionConstraints: "
                     + "${builtins.toJSON c}; unconstrained versions: "
-                    + lib.concatStringsSep ", " (lib.sort lib.versionOlder allVersions)
+                    + lib.concatStringsSep ", " (lib.sort lib.versionOlder sel.allVersions)
                     + ")"
                else " (no binary version found)"
              else " (version ${version} is ABI-incompatible with resolved dependencies)")
@@ -350,36 +375,46 @@ let
 
   # ── Fail-early binary availability check ─────────────────────────────────
 
-  # When allowBuildingFromSource is false, every requested package must have at
-  # least one pre-built wheel for the requested (cudaLabel, Python) combination
-  # after applying versionConstraints.  Without this check the failure would only
-  # surface inside buildOne as an opaque error from buildSource or a missing-wheel
-  # throw, which is hard to diagnose.
+  # When allowBuildingFromSource is false, every requested package must have a
+  # usable pre-built wheel: a version must exist in the binary-hashes directory
+  # AND canBuildBin must return true for that version given the pre-resolved
+  # dependency versions (preResolvedVersions).
+  #
+  # This catches both "no binary at all" and "binary exists but is
+  # ABI-incompatible with the selected torch version" before any expensive
+  # build evaluation begins.  Without this check the latter case would only
+  # surface inside buildOne — still with a clear error, but later.
   _checkBinAvailable =
     allowBuildingFromSource ||
     builtins.all (hld:
       let
-        allVersionsRaw      = hld.getVersions cudaLabel pyVer;
-        allVersions         =
-          if hld.packageName == "torch"
-          then lib.filter (v: _majorMinorOf v == torch) allVersionsRaw
-          else allVersionsRaw;
-        constrainedVersions = applyVersionConstraints hld.packageName allVersions;
-        c                   = allVersionConstraints.${hld.packageName} or {};
+        sel           = _selectVersion hld;
+        version       = sel.version;
+        c             = allVersionConstraints.${hld.packageName} or {};
+        binCompatible = version != null &&
+          hld.canBuildBin {
+            resolvedDeps = preResolvedVersions;
+            inherit version cudaLabel;
+          };
       in
-      constrainedVersions != []
+      binCompatible
       || throw (
-        "concretise: no pre-built wheel available for '${hld.packageName}' "
+        "concretise: no usable pre-built wheel for '${hld.packageName}' "
         + "with cudaLabel '${cudaLabel}' and Python ${python} (${pyVer})"
-        + (if allVersions != [] && constrainedVersions == []
+        + (if version == null
            then
-             " (after applying versionConstraints: ${builtins.toJSON c}; "
-             + "unconstrained versions: "
-             + lib.concatStringsSep ", " (lib.sort lib.versionOlder allVersions)
-             + ")"
-           else "")
-        + ". Set allowBuildingFromSource = true to build from source "
-        + "(source builds are not yet implemented)."
+             (if sel.allVersions != [] && sel.constrainedVersions == []
+              then
+                " (no binary version found after applying versionConstraints: "
+                + "${builtins.toJSON c}; unconstrained versions: "
+                + lib.concatStringsSep ", " (lib.sort lib.versionOlder sel.allVersions)
+                + ")"
+              else "")
+           else
+             let torchV = (preResolvedVersions."torch" or {}).version or "unknown"; in
+             " (version ${version} is ABI-incompatible with"
+             + " torch ${torchV})")
+        + ". Set allowBuildingFromSource = true to fall back to a source build."
       )
     ) sortedHLDs;
 
