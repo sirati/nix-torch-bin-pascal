@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from typing import Callable
 
 from nix_writer.schema import DimSpec
@@ -14,6 +15,7 @@ def write_binary_hashes_per_version(
     header_template: str,
     version_spec: DimSpec,
     prefix_attrs_fn: Callable[[str], dict[str, str]] | None = None,
+    skip_existing: bool = False,
 ) -> None:
     """
     Split *organized* by its outermost key (version) and write one plain
@@ -52,11 +54,31 @@ def write_binary_hashes_per_version(
         generated file.  Example::
 
             prefix_attrs_fn=lambda version: {"_version": version}
+
+        produces::
+
+            {
+              _version = "1.6.0";
+              "2.10.0" = { … };
+              …
+            }
+    skip_existing:
+        When ``True``, skip writing a file if it already exists on disk.
+        Use this for full-scan runs (no ``--tag``) so that previously
+        generated files are not needlessly overwritten.  When ``False``
+        (default), always write every file — use this when a specific tag was
+        explicitly requested and the caller intends to refresh the file.
     """
     os.makedirs(output_dir, exist_ok=True)
 
     for version in _sorted_keys(organized, version_spec):
         path = os.path.join(output_dir, f"v{version}.nix")
+        if skip_existing and os.path.isfile(path):
+            print(
+                f"  binary-hashes/v{version}.nix already exists — skipping.",
+                file=sys.stderr,
+            )
+            continue
         header = header_template.format(version=version)
         write_binary_hashes_nix(
             path,

@@ -32,14 +32,14 @@ let
   # omitted from the returned attrset; hld-type.nix validate fills them in
   # automatically.
   # Torch binaries are distributed via download.pytorch.org, not GitHub
-  # releases, so originType = "torch-website".  mkChangelog and mkOverrideInfo
+  # releases, so originType = "torch-website".  mkChangelog and mkOverlayInfo
   # are required for "torch-website" and must be provided explicitly here.
   # buildBin does not currently use them; they are available for future
   # buildSource use.
   srcOwner    = "pytorch";
   srcRepo     = "pytorch";
   mkChangelog = hldHelpers."github-release-tag" srcOwner srcRepo;
-  mkOverrideInfo = hldHelpers.mkOverrideInfo {
+  mkOverlayInfo = hldHelpers.mkOverlayInfo {
     pname       = packageName;
     nixpkgsAttr = packageName;
     inherit srcOwner srcRepo mkChangelog;
@@ -53,7 +53,7 @@ in
   # ── Identity fields ────────────────────────────────────────────────────────
   # pname and nixpkgsAttr are omitted (both equal packageName "torch");
   # hld-type.nix validate fills them in automatically.
-  inherit srcOwner srcRepo mkChangelog mkOverrideInfo;
+  inherit srcOwner srcRepo mkChangelog mkOverlayInfo;
 
   # ── Binary availability ────────────────────────────────────────────────────
   # torch uses per-CUDA-label files: binary-hashes/{cudaLabel}.nix
@@ -74,7 +74,7 @@ in
   buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
     let
       binaryHashes = import (./binary-hashes + "/${cudaLabel}.nix");
-      base = import ./override-common.nix {
+      base = import ./overlay-common.nix {
         inherit pkgs cudaPackages binaryHashes;
         torchVersion = version;
         triton = resolvedDeps.triton;

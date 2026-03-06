@@ -14,15 +14,15 @@
 #                                 do not also set `default`
 #
 # Identity fields (pname, srcOwner, srcRepo, nixpkgsAttr, mkChangelog,
-# mkOverrideInfo, originType) are declared here and exposed on every validated
-# HLD so that override.nix / override-source.nix files never hardcode
+# mkOverlayInfo, originType) are declared here and exposed on every validated
+# HLD so that overlay.nix / overlay-source.nix files never hardcode
 # package-specific strings.
 #
 # originType controls which defaults are applied:
 #   "github-releases"  – mkChangelog defaults to hldHelpers."github-release-tag"
-#                        srcOwner srcRepo; mkOverrideInfo defaults to the
-#                        standard factory from hldHelpers.mkOverrideInfo
-#   "torch-website"    – mkChangelog and mkOverrideInfo are mandatory (no default)
+#                        srcOwner srcRepo; mkOverlayInfo defaults to the
+#                        standard factory from hldHelpers.mkOverlayInfo
+#   "torch-website"    – mkChangelog and mkOverlayInfo are mandatory (no default)
 #
 # originType replaces the old hyphenated "origin-type" attribute name.
 #
@@ -39,20 +39,20 @@
 #     srcOwner     = "MyOrg";
 #     srcRepo      = "my-pkg";
 #     mkChangelog  = hldHelpers."github-release-tag" srcOwner srcRepo;
-#     mkOverrideInfo = hldHelpers.mkOverrideInfo {
+#     mkOverlayInfo = hldHelpers.mkOverlayInfo {
 #       pname = packageName;  nixpkgsAttr = packageName;
 #       inherit srcOwner srcRepo mkChangelog;
 #     };
 #   in
 #   {
 #     originType  = "github-releases";
-#     inherit srcOwner srcRepo mkChangelog mkOverrideInfo;
+#     inherit srcOwner srcRepo mkChangelog mkOverlayInfo;
 #     highLevelDeps  = { inherit torch; };
 #     getVersions    = hldHelpers.getVersionsFromVersionFiles ./binary-hashes;
 #     buildBin       = { pkgs, cudaPackages, cudaLabel,
 #                        resolvedDeps, version, wrappers ? null }:
-#                      import ./override.nix {
-#                        overrideInfo = mkOverrideInfo
+#                      import ./overlay.nix {
+#                        overlayInfo = mkOverlayInfo
 #                          { inherit pkgs cudaPackages version resolvedDeps; };
 #                      };
 #     buildSource    = { ... }: throw "not yet implemented";
@@ -65,7 +65,7 @@
 
 let
   # ── hldHelpers import ─────────────────────────────────────────────────────
-  # Needed to supply default implementations for mkChangelog / mkOverrideInfo
+  # Needed to supply default implementations for mkChangelog / mkOverlayInfo
   # when originType = "github-releases".
   hldHelpers = import ../concretise/hld-helpers.nix;
 
@@ -117,11 +117,11 @@ let
       conditionalDefault = true;
     };
 
-    mkOverrideInfo = {
+    mkOverlayInfo = {
       description =
-        "function – { pkgs, cudaPackages, version, resolvedDeps } → overrideInfo "
+        "function – { pkgs, cudaPackages, version, resolvedDeps } → overlayInfo "
         + "attrset; for originType=\"github-releases\" defaults to the standard "
-        + "factory from hldHelpers.mkOverrideInfo; required for "
+        + "factory from hldHelpers.mkOverlayInfo; required for "
         + "originType=\"torch-website\"";
       conditionalDefault = true;
     };
@@ -158,7 +158,7 @@ let
 
     isBinBuildBroken = {
       description =
-        "function – overrideInfo -> bool; when true the binary wheel derivation "
+        "function – overlayInfo -> bool; when true the binary wheel derivation "
         + "is marked meta.broken = true, preventing evaluation.  Defaults to "
         + "_: false (never broken).  Use to mark specific (version, cuda, python) "
         + "combinations broken without disabling the entire package.";
@@ -167,7 +167,7 @@ let
 
     isSourceBuildBroken = {
       description =
-        "function – overrideInfo -> bool; when true the source build derivation "
+        "function – overlayInfo -> bool; when true the source build derivation "
         + "is marked meta.broken = true.  Defaults to _: false (never broken).";
       default = _: false;
     };
@@ -178,6 +178,15 @@ let
         + "selection.  Each key is a dep packageName; each value is "
         + "{ minVersion?, maxVersion? }.  Defaults to {} (no constraints).";
       default = {};
+    };
+
+    cudaAgnostic = {
+      description =
+        "bool – when true the package's wheels are identical across all CUDA "
+        + "versions and torch versions (e.g. triton).  The store-path stamp "
+        + "omits the cuda, torch, and pascal dimensions; only python version "
+        + "and the -bin suffix are added.  Default: false.";
+      default = false;
     };
 
     data = {
@@ -228,7 +237,7 @@ let
   #        – static defaults (canBuildBin, versionConstraints, data) via
   #          appliedDefaults
   #        – dynamic defaults (pname, nixpkgsAttr) computed from packageName
-  #        – conditional defaults (mkChangelog, mkOverrideInfo) computed from
+  #        – conditional defaults (mkChangelog, mkOverlayInfo) computed from
   #          originType; throws when originType = "torch-website" and these
   #          fields are absent
   #   5. Stamps the result with _isHighLevelDerivation = true and
@@ -295,25 +304,25 @@ let
           + "originType = \"torch-website\""
         );
 
-      resolvedMkOverrideInfo =
-        if builtins.hasAttr "mkOverrideInfo" attrs
-        then attrs.mkOverrideInfo
+      resolvedMkOverlayInfo =
+        if builtins.hasAttr "mkOverlayInfo" attrs
+        then attrs.mkOverlayInfo
         else if attrs.originType == "github-releases"
-        then hldHelpers.mkOverrideInfo {
+        then hldHelpers.mkOverlayInfo {
           pname               = resolvedPname;
           nixpkgsAttr         = resolvedNixpkgsAttr;
           srcOwner            = attrs.srcOwner;
           srcRepo             = attrs.srcRepo;
           mkChangelog         = resolvedMkChangelog;
           # Thread through the HLD-level broken-check functions so that even
-          # auto-defaulted mkOverrideInfo carries them into overrideInfo.
+          # auto-defaulted mkOverlayInfo carries them into overlayInfo.
           # attrs.X or (_: false) because appliedDefaults haven't been merged
           # yet at this point in validate.
           isBinBuildBroken    = attrs.isBinBuildBroken    or (_: false);
           isSourceBuildBroken = attrs.isSourceBuildBroken or (_: false);
         }
         else throw (
-          "HLD '${packageName}': mkOverrideInfo is required when "
+          "HLD '${packageName}': mkOverlayInfo is required when "
           + "originType = \"torch-website\""
         );
 
@@ -337,7 +346,7 @@ let
         pname                = resolvedPname;
         nixpkgsAttr          = resolvedNixpkgsAttr;
         mkChangelog          = resolvedMkChangelog;
-        mkOverrideInfo       = resolvedMkOverrideInfo;
+        mkOverlayInfo        = resolvedMkOverlayInfo;
         generateHashesScript = resolvedGenerateHashesScript;
       };
     in

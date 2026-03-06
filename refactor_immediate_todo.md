@@ -31,6 +31,7 @@ For triton, per-version files are expected instead of `any.nix`.
 
 ## Other pending items (from human-todo-notes.md)
 
-- Add test cases for CUDA 13.0 (infrastructure deferred; 12.6 tests added)
-- `concretise` overlay/override hook: apply after HDLs are solved but before
-  non-HLD python packages are resolved
+- `concretise` pre-resolution overlay hook: apply an overlay/override AFTER HDLs
+  are solved but before non-HLD python packages are resolved
+- HLD python package dependency resolution (indefinitely postponed per request.txt
+  — keep info in refactor_impl.md but do not start implementation)

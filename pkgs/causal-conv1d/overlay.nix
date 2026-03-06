@@ -5,14 +5,14 @@
 # a pre-built wheel is ABI-compatible with the resolved torch version.
 #
 # Arguments:
-#   overrideInfo - common package context attrset from high-level.nix
+#   overlayInfo  - common package context attrset from high-level.nix
 #                  (pkgs, cudaPackages, version, pname, srcOwner, srcRepo,
 #                   basePkg, changelog, torch)
 #   cudaVersion  - top-level key in binary-hashes/v{version}.nix (default: "cu12")
 #   cxx11abi     - "TRUE" or "FALSE" (default: "TRUE", matching standard
 #                  PyTorch pip wheels on Linux)
 
-{ overrideInfo
+{ overlayInfo
 , cudaVersion ? "cu12"
 , cxx11abi    ? "TRUE"
 }:
@@ -21,7 +21,7 @@ let
   wheelHelpers = import ../../wheel-helpers.nix;
 in
 wheelHelpers.buildBinWheel {
-  inherit overrideInfo cudaVersion cxx11abi;
+  inherit overlayInfo cudaVersion cxx11abi;
   binaryHashesDir = ./binary-hashes;
   # pythonImportsCheck: default derives "causal_conv1d" from pname — correct.
 }

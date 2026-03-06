@@ -6,25 +6,25 @@
 #   2. Select the best compat key <= resolvedTorchMajorMinor.
 #   3. Fetch the wheel and build a Python package derivation from it.
 #
-# This file factors that logic out so each package's override.nix is a thin
+# This file factors that logic out so each package's overlay.nix is a thin
 # wrapper that only supplies the package-specific bits (extra deps, etc.).
 #
-# Usage (from a package's override.nix):
+# Usage (from a package's overlay.nix):
 #
 #   let
 #     wheelHelpers = import ../../wheel-helpers.nix;
 #   in
 #   wheelHelpers.buildBinWheel {
-#     inherit overrideInfo;
+#     inherit overlayInfo;
 #     binaryHashesDir = ./binary-hashes;
 #   };
 
-# No file-level argument: all inputs arrive via overrideInfo inside the call.
+# No file-level argument: all inputs arrive via overlayInfo inside the call.
 {
   # Build a Python package from a pre-built binary wheel.
   #
   # Required arguments:
-  #   overrideInfo      - Common package context attrset from high-level.nix.
+  #   overlayInfo       - Common package context attrset from high-level.nix.
   #                       Fields used:
   #                         pkgs          nixpkgs package set
   #                         pname         Python/PyPI package name
@@ -51,7 +51,7 @@
   #                        Pass [] to skip entirely.
   #                        Default: null → [ (pname with "-" replaced by "_") ]
   buildBinWheel =
-    { overrideInfo
+    { overlayInfo
     , binaryHashesDir
     , extraMeta          ? {}
     , cudaVersion        ? "cu12"
@@ -60,13 +60,13 @@
     , pythonImportsCheck ? null   # null → [ (pname with "-" → "_") ]
     }:
     let
-      # ── Unpack overrideInfo ─────────────────────────────────────────────────
-      pkgs      = overrideInfo.pkgs;
-      pname     = overrideInfo.pname;
-      version   = overrideInfo.version;
-      torch     = overrideInfo.torch     or null;
-      basePkg   = overrideInfo.basePkg   or null;
-      changelog = overrideInfo.changelog or null;
+      # ── Unpack overlayInfo ──────────────────────────────────────────────────
+      pkgs      = overlayInfo.pkgs;
+      pname     = overlayInfo.pname;
+      version   = overlayInfo.version;
+      torch     = overlayInfo.torch     or null;
+      basePkg   = overlayInfo.basePkg   or null;
+      changelog = overlayInfo.changelog or null;
 
       lib = pkgs.lib;
 
@@ -163,9 +163,9 @@
           # easily express).  Our pre-built wheel is a fully-functional
           # replacement, so we default to broken = false here.
           # HLDs can override this via the isBinBuildBroken field, which is
-          # a function overrideInfo -> bool — allowing fine-grained per-version
+          # a function overlayInfo -> bool — allowing fine-grained per-version
           # or per-platform broken marking without disabling the whole package.
-          broken = (overrideInfo.isBinBuildBroken or (_: false)) overrideInfo;
+          broken = (overlayInfo.isBinBuildBroken or (_: false)) overlayInfo;
         }
         // lib.optionalAttrs (changelog != null) { inherit changelog; }
         // extraMeta;

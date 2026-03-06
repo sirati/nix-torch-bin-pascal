@@ -29,7 +29,7 @@ let
   # therefore omitted from the returned attrset; hld-type.nix validate fills
   # them in with packageName automatically.
 
-  # GitHub source coordinates.  Provide defaults; override-source.nix reads
+  # GitHub source coordinates.  Provide defaults; overlay-source.nix reads
   # srcInfo.owner / srcInfo.repo first and falls back to these.
   srcOwner = "Dao-AILab";
   srcRepo  = "causal-conv1d";
@@ -37,12 +37,12 @@ let
   # Changelog URL template (receives the resolved version string).
   mkChangelog = hldHelpers."github-release-tag" srcOwner srcRepo;
 
-  # ── overrideInfo constructor ───────────────────────────────────────────────
+  # ── overlayInfo constructor ────────────────────────────────────────────────
   # Standard implementation from hldHelpers.  Builds the common context attrset
-  # consumed by override.nix and override-source.nix.  Called once per
+  # consumed by overlay.nix and overlay-source.nix.  Called once per
   # buildBin / buildSource invocation with the concretise-supplied pkgs,
   # cudaPackages, resolved version, and deps.
-  mkOverrideInfo = hldHelpers.mkOverrideInfo {
+  mkOverlayInfo = hldHelpers.mkOverlayInfo {
     pname       = packageName;
     nixpkgsAttr = packageName;
     inherit srcOwner srcRepo mkChangelog;
@@ -56,7 +56,7 @@ in
   # ── Identity fields ────────────────────────────────────────────────────────
   # pname and nixpkgsAttr are omitted here (both equal packageName);
   # hld-type.nix validate fills them in automatically.
-  inherit srcOwner srcRepo mkChangelog mkOverrideInfo;
+  inherit srcOwner srcRepo mkChangelog mkOverlayInfo;
 
   # ── Binary availability ────────────────────────────────────────────────────
   # causal-conv1d uses per-version files: binary-hashes/v{version}.nix
@@ -84,12 +84,12 @@ in
   #   { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }
   #
   # causal-conv1d wheels are generic across CUDA 12.x, so we always use "cu12"
-  # as the cudaVersion passed to override.nix regardless of cudaLabel.
+  # as the cudaVersion passed to overlay.nix regardless of cudaLabel.
   buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
-    import ./override.nix {
-      overrideInfo = mkOverrideInfo { inherit pkgs cudaPackages version resolvedDeps; };
-      cudaVersion  = "cu12";
-      # cxx11abi defaults to "TRUE" in override.nix, matching standard pip wheels
+    import ./overlay.nix {
+      overlayInfo = mkOverlayInfo { inherit pkgs cudaPackages version resolvedDeps; };
+      cudaVersion = "cu12";
+      # cxx11abi defaults to "TRUE" in overlay.nix, matching standard pip wheels
     };
 
   # ── Build from source ──────────────────────────────────────────────────────
@@ -105,7 +105,7 @@ in
             { inherit version cudaLabel; };
     in
     # (import ../../nix-retry-wrapper/inject-wrappers.nix wrappers)  # re-enable wrappers
-    import ./override-source.nix {
-      overrideInfo = mkOverrideInfo { inherit pkgs cudaPackages resolvedDeps; version = v; };
+    import ./overlay-source.nix {
+      overlayInfo = mkOverlayInfo { inherit pkgs cudaPackages resolvedDeps; version = v; };
     };
 }

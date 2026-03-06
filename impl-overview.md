@@ -24,7 +24,9 @@ Optional fields with conditional defaults (depend on `origin-type`):
 
 Each HLD's `let` block defines `srcOwner`, `srcRepo`, `mkChangelog` (via `hldHelpers."github-release-tag"`), and `mkOverrideInfo` (via `hldHelpers.mkOverrideInfo`), then exposes them via `inherit` in the returned attrset alongside `"origin-type"`. `pname` and `nixpkgsAttr` are omitted when they equal `packageName` (validate fills them in); otherwise they are declared in the `let` block and inherited into the attrset.
 
-`buildBin` and `buildSource` call `mkOverrideInfo { inherit pkgs cudaPackages version resolvedDeps; }` to obtain the `overrideInfo` bundle passed to `override.nix` / `override-source.nix`.
+`buildBin` and `buildSource` call `mkOverlayInfo { inherit pkgs cudaPackages version resolvedDeps; }` to obtain the `overlayInfo` bundle passed to `overlay.nix` / `overlay-source.nix`.
+
+Optional fields with static defaults also include `cudaAgnostic` (default `false`). When `true` (set on the triton HLD) the store-path stamp omits the cuda, torch, and pascal dims so that the same triton derivation name is produced regardless of the enclosing concretise call's CUDA/torch settings.
 
 See [`pkgs/torch/high-level.nix`](pkgs/torch/high-level.nix), [`pkgs/triton/high-level.nix`](pkgs/triton/high-level.nix), [`pkgs/flash-attn/high-level.nix`](pkgs/flash-attn/high-level.nix), [`pkgs/causal-conv1d/high-level.nix`](pkgs/causal-conv1d/high-level.nix), [`pkgs/mamba-ssm/high-level.nix`](pkgs/mamba-ssm/high-level.nix).
 
@@ -51,22 +53,25 @@ Steps:
 - `canBuildBinFromVersionFiles` — shared `canBuildBin` for version-file packages.
 - `requireSourceHash` — shared `buildSource` pre-flight; validates version non-null and source-hashes file exists; returns validated version string or throws.
 - `"github-release-tag"` — `owner: repo: v:` → standard GitHub releases changelog URL; used as default `mkChangelog` for `"github-releases"` packages.
-- `mkOverrideInfo` — `{ pname, nixpkgsAttr, srcOwner, srcRepo, mkChangelog }: { pkgs, cudaPackages, version, resolvedDeps }:` → standard `overrideInfo` attrset (`pkgs`, `cudaPackages`, `pname`, `srcOwner`, `srcRepo`, `version`, `basePkg`, `changelog`, `torch`); used by all HLD files and as the default `mkOverrideInfo` for `"github-releases"` packages.
+- `mkOverlayInfo` — `{ pname, nixpkgsAttr, srcOwner, srcRepo, mkChangelog }: { pkgs, cudaPackages, version, resolvedDeps }:` → standard `overlayInfo` attrset (`pkgs`, `cudaPackages`, `pname`, `srcOwner`, `srcRepo`, `version`, `basePkg`, `changelog`, `torch`); used by all HLD files and as the default `mkOverlayInfo` for `"github-releases"` packages.
 
-## Override files
+## Overlay files
 
-`override.nix` (binary wheel install) and `override-source.nix` (source build) under each `pkgs/<name>/` receive a single `overrideInfo` attrset. They delegate to:
+`overlay.nix` (binary wheel install) and `overlay-source.nix` (source build) under each `pkgs/<name>/` receive a single `overlayInfo` attrset. They delegate to:
 
 - [`wheel-helpers.nix`](wheel-helpers.nix) (`buildBinWheel`) for binary installs.
 - [`concretise/source-build-helpers.nix`](concretise/source-build-helpers.nix) (`buildSourcePackage`) for source builds.
 
-Both helpers unpack `overrideInfo` fields (`pkgs`, `cudaPackages`, `pname`, `srcOwner`, `srcRepo`, `version`, `basePkg`, `changelog`, `torch`) internally.
+Both helpers unpack `overlayInfo` fields (`pkgs`, `cudaPackages`, `pname`, `srcOwner`, `srcRepo`, `version`, `basePkg`, `changelog`, `torch`) internally.
 
 ## Concretisation — store-path naming and duplicate-dep filtering
 
 `buildAndStamp` (in `concretise/default.nix`) replaces the former `buildOne` + `addMarker` pair.  It builds the derivation (bin or source) and immediately stamps it with:
 
-- `name = "python${basePython.version}-${pname}-${version}-torch${torchMM}-${cudaLabel}[-pascal][-bin]"` — full Python patch version (e.g. `3.13.11`) plus torch series digits, CUDA label, optional pascal flag, and `-bin` for wheel builds.  `pname` is unchanged so `ps.<pname>` lookups still work.
+- `name = "python${basePython.version}-${pname}-${version}${suffix}"` — full Python patch version (e.g. `3.13.11`).  The suffix depends on the package:
+  - Normal packages: `-torch${torchMM}-${cudaLabel}[-pascal][-bin]`
+  - Torch itself (`packageName == "torch"`): `-${cudaLabel}[-pascal][-bin]` (torch dim omitted — it is already encoded in pname+version)
+  - `cudaAgnostic = true` packages (triton): `-bin` only (cuda/torch/pascal dims all omitted since the wheel is identical across all CUDA and torch versions)
 - `passthru.concretiseMarker` — opaque key for cross-call mixing detection.
 
 `filterExtras` (used when building `env` and `extendEnv`) drops extra packages whose `pname`/`name` matches either a directly concretise-managed package (`concreteNameSet`) or a package directly propagated by one of those managed packages (`propagatedByConcreteSet`).  This prevents `buildEnv` conflicts when a concrete package propagates e.g. `einops` from `basePython.pkgs` while the user also passes `ps.einops` (from `augmentedPython.pkgs`) via `extraPythonPackages` — both are the same version but have different store paths because `augmentedPython` is a distinct derivation.
@@ -74,6 +79,10 @@ Both helpers unpack `overrideInfo` fields (`pkgs`, `cudaPackages`, `pname`, `src
 ## Hash and wheel data generation
 
 Binary wheel hashes: `pkgs/<pkg>/binary-hashes/`.  Source hashes: `pkgs/<pkg>/source-hashes/`.  Each package has its own `generate-hashes.py` entry point.
+
+All generated hash files are self-identifying: binary-hash files carry `_version = "…"` (and torch files carry `_cudaLabel = "…"`); source-hash files carry `_version = "…"` as the first attribute. File names follow the `v{version}.nix` / `{cudaLabel}.nix` convention for generator bookkeeping, but no code should rely on the filename to determine identity.
+
+`write_binary_hashes_per_version` accepts `skip_existing: bool`. When `True` (used on full-scan / no `--tag` runs) it skips files that already exist to avoid redundant regeneration. When `False` (used when `--tag` is explicit) it always overwrites. `run_source_hashes` applies the same logic: skip existing files unless `--tag` was given explicitly.
 
 `generateHashesScript` is an optional HLD field (dynamic default: auto-detects `pkgs/<packageName>/generate-hashes.py` via `builtins.pathExists`; resolves to the store path if found, `null` otherwise).  HLDs never need to declare it explicitly.  `flake.nix` iterates `pytorchScope`, and for every HLD with a non-null `generateHashesScript` exposes a flake app at `apps.<system>.<packageName>.gen-hashes` built by `generate-hashes/lib.nix`'s `makeGenHashesApp`.  The wrapper adds `python3`, `git`, `nix-prefetch-github` to `PATH` and sets `PYTHONPATH=$PWD/generate-hashes` before exec-ing the script; `$PWD` must be the project root.  Usage: `nix run .#flash-attn.gen-hashes -- --tag v2.8.1`.
 
@@ -89,7 +98,7 @@ Triton is a separate HLD (`pkgs/triton/`) with pre-built wheels from `https://do
 
 Binary hashes live in `pkgs/triton/binary-hashes/v{version}.nix` — one file per triton version, each containing the CUDA-agnostic hash data for that version (`pyVer → os → arch → wheelData`).  `getVersionsFromAnyVersionFiles` scans for `v{semver}.nix` files and ignores `cudaLabel` entirely.  During the transition from the old `any.nix` layout, both helpers fall back to `any.nix` if no per-version files exist yet; run `nix run .#default.triton.gen-hashes` to migrate and then delete `any.nix`.
 
-`pkgs/triton/override.nix` extends the upstream `triton-bin` derivation with two NixOS compatibility fixes in `postFixup`:
+`pkgs/triton/overlay.nix` extends the upstream `triton-bin` derivation with two NixOS compatibility fixes in `postFixup`:
 1. **ldconfig patch**: `driver.py` calls `/sbin/ldconfig -p` directly; patched via `sed` to insert an `os.path.exists(cudaStubsDir)` early-return guard so triton finds `libcuda.so.1` via the CUDA stubs without invoking `/sbin/ldconfig` (which does not exist on NixOS).
 2. **C compiler patch**: `triton/runtime/build.py` searches for `gcc`/`clang` on `PATH` to compile `driver.c` on first use; patched to fall back to the Nix-provided `gcc` so compilation works outside a build sandbox.
 

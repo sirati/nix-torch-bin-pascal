@@ -224,7 +224,7 @@ let
   # ── pkgs variant for building ─────────────────────────────────────────────
 
   # Override stdenv → GCC 13 (required by CUDA 12.x) and point python3 at the
-  # chosen interpreter so that override.nix files automatically pick it up via
+  # chosen interpreter so that overlay.nix files automatically pick it up via
   # pkgs.python3 / pkgs.python3Packages.
   pkgsForBuild = pkgs // {
     stdenv          = pkgs.overrideCC pkgs.stdenv pkgs.gcc13;
@@ -373,7 +373,8 @@ let
   # Example store-path name transformation:
   #   flash-attention-2.8.3  →  flash-attention-2.8.3-torch210-cu128-bin
   #   causal-conv1d-1.6.0    →  causal-conv1d-1.6.0-torch210-cu128
-  #   torch-2.10.0           →  torch-2.10.0-torch210-cu128-bin
+  #   torch-2.10.0           →  torch-2.10.0-cu128-bin     (no duplicate "torch")
+  #   triton-3.6.0           →  triton-3.6.0-bin           (CUDA-agnostic: no cuda/torch/pascal)
   #
   # The stamp also injects passthru.concretiseMarker for cross-call mixing
   # detection in checkedWithPackages.
@@ -416,10 +417,17 @@ let
             );
       # Suffix appended to the Nix store-path name to make builds for different
       # torch/CUDA/pascal combinations visually distinct in the store.
+      #
+      # cudaAgnostic packages (e.g. triton) produce wheels that are identical
+      # across all CUDA and torch versions, so their stamp is just "-bin".
+      # The torch package itself skips the "-torch…" prefix since its own
+      # pname already encodes the package identity.
+      cudaAgnostic = hld.cudaAgnostic or false;
+      isTorchPkg   = hld.packageName == "torch";
       nameSuffix =
-        "-torch${_torchSeriesDigits}"
-        + "-${cudaLabel}"
-        + lib.optionalString pascal "-pascal"
+        lib.optionalString (!cudaAgnostic && !isTorchPkg) "-torch${_torchSeriesDigits}"
+        + lib.optionalString (!cudaAgnostic) "-${cudaLabel}"
+        + lib.optionalString (!cudaAgnostic && pascal) "-pascal"
         + lib.optionalString binCompatible "-bin";
     in
     drv.overrideAttrs (old: {

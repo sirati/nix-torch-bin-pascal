@@ -1,3 +1,4 @@
+✅
 old binary-hashes.nix for github packages starts with
 ```
 cudaVersion:
@@ -11,38 +12,16 @@ new ones however do:
   cu12 = {
 ```
 
+✅
 further for the torch binary-hashes files the currently do not include the information that is used to name their file. it probably is better to not have a information dependency on file structure.
 
 
-instead of having an optional arg preferBin, i would like to have allowBuildingFromSource being mandatory
+✅
 
 we need to add information of the python defined dependencies
 i.e. if a pkg in python defines that torch = >=2.8 we need to translate that into a nix expression, best via another python script. further we need to be able to manually restrict this further, if we detect a future incompatibility
 
 for wheels this is also relevant, as wheels may have a direct binary based dependency on other wheels, which may become incompatible for future versions (i.e. already incompatible now, but was not known when that version was released.)
-
-in pkgs/default.nix I can see the following `  fix = f: let x = f x; in x;` i thought there is an existing fix provided by nix (maybe that is only provided by nixpkgs so we cannot use it)
-
-
-as part of the source process besides binary-hashes we need to have a source-hashes folder that contains whats needed for building a python packages from source, e.g. fetchFromGitHub requires the following attrset as argument
-```
-{
-    owner = "Dao-AILab";
-    repo = "causal-conv1d";
-    tag = "v${version}";
-    hash = "sha256-hFaF/oMdScDpdq+zq8WppWe9GONWppEEx2pIcnaALiI=";
-  };
-```
-so we need to probably rename generate-binary-hashes folder to generate-hashes, and then in new files add the code for generating source-hashes, based on tagged commits.
-
-
-causal-conv1d and flash-attn both have an override.nix that shares a lot of code, this is probably true for most pytorch dep. python packages. that code should go into a shared file outside of the pkgs folder.
-
-
-please stop using cuda12.6 in all examples. the current standard is cuda12.8, always use that.
-
-currently the error checking and messages for buildSource in all high-level.nix are the same more less. this shared code must be extracted into hld-helpers.nix
-
 
 
 The real current failure is **triton version conflict**:
@@ -61,18 +40,8 @@ Further as long as hdls define all such dependencies the hdl can then provide de
 
 
 
-```
-these 5 derivations will be built:
-  /nix/store/k7w5dmdlqs3gnr4pl6h5bhndqrdd4dw4-python3.13-flash-attention-2.8.3.drv
-  /nix/store/7gpbaq0blmqb193nrvswngcb0pzc5b2r-python3-3.13.11-env.drv
-  /nix/store/bh0r13v3vc5yavqckc5hhx37ir4fgrgm-python3.13-mamba-ssm-2.3.0.drv
-  /nix/store/95xxba1xip7f140lw2qss5jmysqs3bb4-python3-3.13.11-env.drv
-  /nix/store/gbwj8nvlxad03sz7xqypwk214c2fyhkg-python3-3.13.11-env.drv
-building '/nix/store/k7w5dmdlqs3gnr4pl6h5bhndqrdd4dw4-python3.13-flash-attention-2.8.3.drv'...
-building '/nix/store/bh0r13v3vc5yavqckc5hhx37ir4fgrgm-python3.13-mamba-ssm-2.3.0.drv'...
-```
-It would be great if build python packages via HDL contain in the store path the torch, cuda, and pascal version, as well as adding a -bin for wheel build ones.
 
+✅
 lets add test cases for cuda 12.6 and cuda 13.0
 
 concretise should support applying an overlay/override AFTER HDLs are solved but before python packages that no HDL depends on are resolved.  
@@ -104,30 +73,19 @@ Last 5 log lines:
 > hint: `pkgs.nix-diff` can be used to compa
 ```
 so that means the code detecting such dublications does not work yet.
-
-
-
-it would be more appropirate for triton binary-hashes files to be named by and separated by the triton version not any.nix
-
-
+this is probably due to:
 ```
-TRITON_LIBCUDA_PATH = "/run/opengl-driver/lib";
-```
-I think its best to remove these, its unexpected that concretise makes such modifications, also if the fix has to always work 
+in
+wheelHelpers.buildBinWheel {
+  inherit overrideInfo cudaVersion cxx11abi;
+  binaryHashesDir    = ./binary-hashes;
+  extraDependencies  = [ pkgs.python3Packages.einops ];
+```  
+which takes einops from the unmodified python3Packages, instead this needs to be updates, so that we use the python environment that concretise is building rn, i.e. use the dependency of our own python 
+  
 
 
-
-currently HDLs already specify their origin-type (rename to originType) and other data needed for the theit generate-hashes.py. the generate-hashes.py have a lot of common code, please refactor it so more code lives in generate-hashes.py, further we just refactored HLD (with help of flake.nix) to allow invoking e.g. nix run .#default.flash-attn.gen-hashes -- --tag v2.8.1
-As nearly every specific information needed in already in the HDL, please refactor this invokation method so that the available info in the HDL is used and not dublicated between the HDL and the generate-hashes.py. i.e. most common code needs to live in /generate-hashes/ the generate-hashes.py does not define its own main instead, it is imported by the main living in /generate-hashes/ this way allowing custom python code. the regex should be moved to the HDL.
-keep in mind that torch/triton and flash-attn/causal-conv1d/mamba-ssm work quite differently, so your refactor needs to keep this modularity. as before assume that for torch/triton we do not set defaults or we set the default conditionally on originType being github-releases vs torch-website.
-
-
-i have noticed calling generate-hashes will corrupt the missing-digests file, if called e.g. for a specific tag. missing-digests instead should be updated.
-
-
-i think all this override stuff is actually an accident and we meant to say overlay:./override.nix {
-      overrideInfo = mkOverrideInfo
-if thats true lets rename all these overrides to overlays. also lets change override-bin.nix to override-bin.nix / overlay-bin.nix
+lets change overlay.nix to overlay-bin.nix everywhere to make clear that one is source and one is bin
 
 
 i have noticed for running binary-hashed with a tag, it does all the parsing, and then realised the file already exists, and discards the work. instead when run explicitly with a tag, it should always replace the file. when run without a tag, it should only do fetching and parsing, if the file does not exist already.
@@ -144,3 +102,54 @@ i have noticed for running binary-hashed with a tag, it does all the parsing, an
       # Prefer the per
 ```
 i have noticed that some code expects hashes files to have a specific name. this shouldnt be a file inside /binary-hashes/ or /source-hashes/ should be able to have any name and all information must be contained in the content and not depend on the file name. the naming is there more for the hash generator to detected done work and for git commits, do not be as noisy (generated files may change a lot, but if the file is not touched because the generation only touches separate content and places it into a new file, this becomes a none-concern)
+
+
+```
+warning: Git tree '/home/sirati/devel/python/ml-project' is dirty
+these 19 derivations will be built:
+  /nix/store/9ka8bib47a4xw04y9jsdb182rf9fsbkb-python3.13.11-triton-3.6.0-torch210-cu128-bin.drv
+  /nix/store/jfk6xva8i3c5yzj2gnf7pgida83ckj33-python3.13.11-torch-2.10.0-torch210-cu128-bin.drv
+  /nix/store/5arjag2v0z3x35vi1rvgsf19gsmlr3j8-python3.13.11-flash-attention-2.8.3-torch210-cu128.drv
+  /nix/store/mjwm64dzvp60naa4ivvp84hrskmm9asj-python3.13.11-causal-conv1d-1.6.0-torch210-cu128.drv
+  /nix/store/jf1j0lzlqsxdg1ks3wzwsn88y4yxsw09-python3.13.11-mamba-ssm-2.3.0-torch210-cu128.drv
+```
+as triton does not depend on cuda or torch, please make sure that the derivation is independent of them i.e. python3.13.11-torch-2.10.0-torch210-cu128-bin, python3.13.11-torch-2.10.0-torch210-cu126-bin, python3.13.11-torch-2.9.3-torch209-cu128-bin should all depend on the same triton!, further for the torch derivation name, it should not include torch again
+
+
+```
+let
+  # ── Package identity ───────────────────────────────────────────────────────
+  # pname and nixpkgsAttr both equal packageName ("mamba-ssm") and are
+  # therefore omitted from the returned attrset; hld-type.nix validate fills
+  # them in with packageName automatically.
+
+  # GitHub source coordinates.  Provide defaults; override-source.nix reads
+  # srcInfo.owner / srcInfo.repo first and falls back to these.
+  srcOwner = "state-spaces";
+  srcRepo  = "mamba";
+
+  # Changelog URL template (receives the resolved version string).
+  mkChangelog = hldHelpers."github-release-tag" srcOwner srcRepo;
+
+  # ── overrideInfo constructor ───────────────────────────────────────────────
+  # Standard implementation from hldHelpers.  Builds the common context attrset
+  # consumed by override.nix and override-source.nix.  Called once per
+  # buildBin / buildSource invocation with the concretise-supplied pkgs,
+  # cudaPackages, resolved version, and deps.
+  mkOverrideInfo = hldHelpers.mkOverrideInfo {
+    pname       = packageName;
+    nixpkgsAttr = packageName;
+    inherit srcOwner srcRepo mkChangelog;
+  };
+
+in
+{
+  # ── Origin type ────────────────────────────────────────────────────────────
+  originType = "github-releases";
+
+  # ── Identity fields ────────────────────────────────────────────────────────
+  # pname and nixpkgsAttr are omitted here (both equal packageName);
+  # hld-type.nix validate fills them in automatically.
+  inherit srcOwner srcRepo mkChangelog mkOverrideInfo;
+```
+most HDLs contain all these variables that i believe do not need to be defined via let and then inherited. also 

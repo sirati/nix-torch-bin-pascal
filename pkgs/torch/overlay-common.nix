@@ -1,4 +1,4 @@
-# Generic torch override for pre-built CUDA wheels.
+# Generic torch overlay for pre-built CUDA wheels.
 #
 # This is the shared implementation called by torch/high-level.nix buildBin.
 # It imports the appropriate binary-hashes/{cudaLabel}.nix plain attrset and

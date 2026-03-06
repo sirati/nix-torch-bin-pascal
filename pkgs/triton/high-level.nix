@@ -26,12 +26,12 @@ let
   # omitted from the returned attrset; hld-type.nix validate fills them in
   # automatically.
   # Triton binaries are distributed via download.pytorch.org, not GitHub
-  # releases, so originType = "torch-website".  mkChangelog and mkOverrideInfo
+  # releases, so originType = "torch-website".  mkChangelog and mkOverlayInfo
   # are required for "torch-website" and must be provided explicitly here.
   srcOwner    = "pytorch";
   srcRepo     = "pytorch";
   mkChangelog = hldHelpers."github-release-tag" srcOwner srcRepo;
-  mkOverrideInfo = hldHelpers.mkOverrideInfo {
+  mkOverlayInfo = hldHelpers.mkOverlayInfo {
     pname       = packageName;
     nixpkgsAttr = packageName;
     inherit srcOwner srcRepo mkChangelog;
@@ -42,10 +42,18 @@ in
   # ── Origin type ────────────────────────────────────────────────────────────
   originType = "torch-website";
 
+  # ── CUDA-agnostic flag ─────────────────────────────────────────────────────
+  # Triton wheels are identical across all CUDA versions and torch versions.
+  # This suppresses the cuda/torch/pascal dims from the store-path stamp so that
+  # e.g. python3.13.11-torch-2.10.0-torch210-cu128-bin and
+  # python3.13.11-torch-2.9.3-torch209-cu126-bin both depend on the same
+  # python3.13.11-triton-3.6.0-bin derivation name.
+  cudaAgnostic = true;
+
   # ── Identity fields ────────────────────────────────────────────────────────
   # pname and nixpkgsAttr are omitted (both equal packageName "triton");
   # hld-type.nix validate fills them in automatically.
-  inherit srcOwner srcRepo mkChangelog mkOverrideInfo;
+  inherit srcOwner srcRepo mkChangelog mkOverlayInfo;
 
   # ── Binary availability ────────────────────────────────────────────────────
   # triton wheels are CUDA-agnostic; per-version files v{version}.nix cover all
@@ -77,7 +85,7 @@ in
           or (throw "triton buildBin: version ${version} not found in binary-hashes/any.nix")
         else throw "triton buildBin: no binary hashes found for version ${version}";
 
-      base = import ./override.nix {
+      base = import ./overlay.nix {
         inherit pkgs cudaPackages versionHashes;
         tritonVersion = version;
       };

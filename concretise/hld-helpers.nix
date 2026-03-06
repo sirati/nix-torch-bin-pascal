@@ -1,24 +1,24 @@
 # Shared helpers for high-level derivations (HLDs).
 #
 # In addition to the version-resolution and ABI-check helpers, this file
-# provides two identity/overrideInfo helpers used by high-level.nix files:
+# provides two identity/overlayInfo helpers used by high-level.nix files:
 #
 #   github-release-tag
 #     Builds the standard GitHub releases changelog URL template.
 #     Usage in high-level.nix:
 #       mkChangelog = hldHelpers."github-release-tag" srcOwner srcRepo;
 #
-#   mkOverrideInfo
-#     Builds the standard mkOverrideInfo constructor function used by every
+#   mkOverlayInfo
+#     Builds the standard mkOverlayInfo constructor function used by every
 #     buildBin / buildSource call.  Closes over the package identity fields
-#     so that neither override.nix nor override-source.nix needs to repeat them.
+#     so that neither overlay.nix nor overlay-source.nix needs to repeat them.
 #     Usage in high-level.nix:
-#       mkOverrideInfo = hldHelpers.mkOverrideInfo {
+#       mkOverlayInfo = hldHelpers.mkOverlayInfo {
 #         inherit pname srcOwner srcRepo mkChangelog;
 #         nixpkgsAttr = packageName;   # or a custom attr name
 #       };
 #     Then in buildBin / buildSource:
-#       overrideInfo = mkOverrideInfo { inherit pkgs cudaPackages version resolvedDeps; };
+#       overlayInfo = mkOverlayInfo { inherit pkgs cudaPackages version resolvedDeps; };
 #
 #
 # This file provides reusable getVersions implementations for the two
@@ -41,7 +41,7 @@
 # cudaLabel.  A version is only returned if a pre-built wheel actually exists
 # for the requested (cuda, python) combination — not merely for the cuda label
 # alone.  This allows concretise to fail early with a clear diagnostic instead
-# of surfacing a cryptic evaluation error deep inside an override.nix file.
+# of surfacing a cryptic evaluation error deep inside an overlay.nix file.
 #
 # Usage in a high-level.nix (injected via pkgs/default.nix scope):
 #
@@ -72,13 +72,13 @@
     "https://github.com/${owner}/${repo}/releases/tag/v${v}";
 
   # --------------------------------------------------------------------------
-  # mkOverrideInfo
+  # mkOverlayInfo
   #
-  # Factory that produces the mkOverrideInfo constructor function consumed by
-  # each package's override.nix and override-source.nix.  Takes the package
+  # Factory that produces the mkOverlayInfo constructor function consumed by
+  # each package's overlay.nix and overlay-source.nix.  Takes the package
   # identity fields as a named-argument attrset and returns a curried function:
   #
-  #   mkOverrideInfo identityAttrs buildArgs -> overrideInfo attrset
+  #   mkOverlayInfo identityAttrs buildArgs -> overlayInfo attrset
   #
   # Identity fields (all required unless marked optional):
   #   pname               – Python/PyPI package name
@@ -88,10 +88,10 @@
   #   mkChangelog         – version string → changelog URL function
   #
   # Optional identity fields (default to always-false functions):
-  #   isBinBuildBroken    – overrideInfo -> bool; when true the binary wheel
+  #   isBinBuildBroken    – overlayInfo -> bool; when true the binary wheel
   #                         derivation is marked meta.broken = true.  Default:
   #                         _: false (never broken).
-  #   isSourceBuildBroken – overrideInfo -> bool; same for source builds.
+  #   isSourceBuildBroken – overlayInfo -> bool; same for source builds.
   #                         Default: _: false (never broken).
   #
   # Build args (all required, passed at build time from buildBin/buildSource):
@@ -100,15 +100,15 @@
   #   version       – resolved version string
   #   resolvedDeps  – attrset of resolved HLD dependency derivations
   #
-  # The resulting overrideInfo attrset contains:
+  # The resulting overlayInfo attrset contains:
   #   pkgs, cudaPackages, pname, srcOwner, srcRepo, version,
   #   basePkg             (pkgs.python3Packages.${nixpkgsAttr} or null),
   #   changelog           (mkChangelog version),
   #   torch               (resolvedDeps.torch or null),
-  #   isBinBuildBroken    (propagated from identity; called with overrideInfo),
-  #   isSourceBuildBroken (propagated from identity; called with overrideInfo)
+  #   isBinBuildBroken    (propagated from identity; called with overlayInfo),
+  #   isSourceBuildBroken (propagated from identity; called with overlayInfo)
   # --------------------------------------------------------------------------
-  mkOverrideInfo =
+  mkOverlayInfo =
     { pname, nixpkgsAttr, srcOwner, srcRepo, mkChangelog
     , isBinBuildBroken    ? _: false
     , isSourceBuildBroken ? _: false
@@ -366,14 +366,14 @@
       v = if version != null then version else throw (
         "${pkgName} buildSource: version is null — no binary-hashes entry "
         + "exists for cudaLabel '${cudaLabel}'.  Add a binary-hashes entry "
-        + "for the desired version, or run generate-hashes.py to fetch it."
+        + "for the desired version, or run the gen-hashes app to fetch it."
       );
       sourceHashPath = sourceHashesDir + "/v${v}.nix";
     in
     if !builtins.pathExists sourceHashPath
     then throw (
       "${pkgName} buildSource: source-hashes/v${v}.nix does not exist. "
-      + "Run: nix-shell ${pkgRelPath}/generate-hashes.py -- "
+      + "Run: nix run .#default.${pkgName}.gen-hashes -- "
       + "--source-only --tag v${v}"
     )
     else v;

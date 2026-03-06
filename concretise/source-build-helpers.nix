@@ -2,7 +2,7 @@
 #
 # Provides buildSourcePackage, a function that encapsulates the ~80% of
 # boilerplate that causal-conv1d, flash-attn, and mamba-ssm share in their
-# respective override-source.nix files:
+# respective overlay-source.nix files:
 #
 #   • fetchFromGitHub using rev/hash from srcInfo (looked up inside helper)
 #   • build-system: setuptools + ninja + cuda_nvcc (plus optional extras)
@@ -10,21 +10,21 @@
 #   • buildInputs: the five standard CUDA libs (plus optional extras)
 #   • env: optional CUDA_HOME and optional FORCE_BUILD env-var (plus extras)
 #   • doCheck = false
-#   • meta composed from the upstream nixpkgs derivation (overrideInfo.basePkg)
+#   • meta composed from the upstream nixpkgs derivation (overlayInfo.basePkg)
 #     + "(built from source)" suffix + sourceProvenance override
 #   • pythonImportsCheck derived from pname when not explicitly supplied
 #
-# Each override-source.nix becomes a minimal thin wrapper that:
+# Each overlay-source.nix becomes a minimal thin wrapper that:
 #   1. imports this file directly (no { pkgs } arg needed)
-#   2. calls buildSourcePackage with overrideInfo, sourceHashesDir, and only
+#   2. calls buildSourcePackage with overlayInfo, sourceHashesDir, and only
 #      the per-package differences
 #
 # --------------------------------------------------------------------------
 # Argument reference for buildSourcePackage
 # --------------------------------------------------------------------------
 #
-#   overrideInfo          Attrset constructed by high-level.nix and passed
-#                         through the override-source.nix call site.  Fields:
+#   overlayInfo           Attrset constructed by high-level.nix and passed
+#                         through the overlay-source.nix call site.  Fields:
 #
 #                           pkgs          nixpkgs package set (python3 = target)
 #                           cudaPackages  CUDA package set (configured by concretise)
@@ -67,11 +67,11 @@
 #                         Override explicitly when the module name differs
 #                         (e.g. pname "flash-attention" → [ "flash_attn" ]).
 
-# No file-level argument: all inputs arrive via overrideInfo inside the call.
+# No file-level argument: all inputs arrive via overlayInfo inside the call.
 {
   buildSourcePackage =
     { # Required
-      overrideInfo
+      overlayInfo
     , sourceHashesDir
 
       # Optional – meta
@@ -93,16 +93,16 @@
     }:
 
     let
-      # ── Unpack overrideInfo ───────────────────────────────────────────────
-      pkgs         = overrideInfo.pkgs;
-      cudaPackages = overrideInfo.cudaPackages;
-      version      = overrideInfo.version;
-      pname        = overrideInfo.pname;
-      srcOwner     = overrideInfo.srcOwner;
-      srcRepo      = overrideInfo.srcRepo;
-      basePkg      = overrideInfo.basePkg   or null;
-      changelog    = overrideInfo.changelog or null;
-      torch        = overrideInfo.torch     or null;
+      # ── Unpack overlayInfo ────────────────────────────────────────────────
+      pkgs         = overlayInfo.pkgs;
+      cudaPackages = overlayInfo.cudaPackages;
+      version      = overlayInfo.version;
+      pname        = overlayInfo.pname;
+      srcOwner     = overlayInfo.srcOwner;
+      srcRepo      = overlayInfo.srcRepo;
+      basePkg      = overlayInfo.basePkg   or null;
+      changelog    = overlayInfo.changelog or null;
+      torch        = overlayInfo.torch     or null;
 
       inherit (pkgs) lib;
 
@@ -129,9 +129,9 @@
           # easily express).  Our source build is a fully-functional
           # replacement, so we default to broken = false here.
           # HLDs can override this via the isSourceBuildBroken field, which is
-          # a function overrideInfo -> bool — allowing fine-grained per-version
+          # a function overlayInfo -> bool — allowing fine-grained per-version
           # or per-platform broken marking without disabling the whole package.
-          broken = (overrideInfo.isSourceBuildBroken or (_: false)) overrideInfo;
+          broken = (overlayInfo.isSourceBuildBroken or (_: false)) overlayInfo;
         }
         // lib.optionalAttrs (changelog != null) { inherit changelog; }
         // extraMeta;

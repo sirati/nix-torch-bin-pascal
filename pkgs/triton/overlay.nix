@@ -1,4 +1,4 @@
-# Generic triton override for pre-built wheels.
+# Generic triton overlay for pre-built wheels.
 #
 # This is the shared implementation called by triton/high-level.nix buildBin.
 # It imports the appropriate binary-hashes file and fetches the matching
@@ -31,7 +31,7 @@
 #   cudaPackages    - the CUDA package set to link against at runtime
 #   tritonVersion   - Triton version string, e.g. "3.6.0"
 #   versionHashes   - plain attrset imported from binary-hashes/v{version}.nix
-#                     (keyed by pyVer → os → arch; no outer version key)
+#                     (keyed by pyVer → os → arch; _version sentinel key ignored)
 
 { pkgs, cudaPackages, tritonVersion, versionHashes }:
 

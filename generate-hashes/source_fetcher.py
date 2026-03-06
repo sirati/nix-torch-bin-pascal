@@ -457,10 +457,13 @@ def write_source_hash_file(output_dir: str, entry: SourceEntry) -> None:
     The file is a minimal Nix attrset::
 
         {
+          _version = "1.6.0";
           rev  = "v1.6.0";
           hash = "sha256-…";
         }
 
+    ``_version`` is a self-identifying sentinel so that the file's content
+    carries its own version without relying on the filename convention.
     ``owner`` and ``repo`` are emitted only when non-empty (i.e. when they
     differ from the package's well-known defaults).
 
@@ -477,6 +480,7 @@ def write_source_hash_file(output_dir: str, entry: SourceEntry) -> None:
     lines: list[str] = [
         "# WARNING: Auto-generated file. Do not edit manually!",
         "{",
+        f'  _version = "{entry.version}";',
     ]
     if entry.owner:
         lines.append(f'  owner = "{entry.owner}";')

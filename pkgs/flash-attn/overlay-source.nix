@@ -5,17 +5,17 @@
 # is ABI-compatible with the resolved torch version.
 #
 # Arguments:
-#   overrideInfo - common package context attrset from high-level.nix
+#   overlayInfo  - common package context attrset from high-level.nix
 #                  (pkgs, cudaPackages, version, pname, srcOwner, srcRepo,
 #                   basePkg, changelog, torch)
 
-{ overrideInfo }:
+{ overlayInfo }:
 
 let
   buildSourcePackage =
     (import ../../concretise/source-build-helpers.nix).buildSourcePackage;
 
-  inherit (overrideInfo) pkgs cudaPackages;
+  inherit (overlayInfo) pkgs cudaPackages;
   inherit (pkgs) lib;
   inherit (cudaPackages) backendStdenv;
 
@@ -25,7 +25,7 @@ let
 
 in
 buildSourcePackage {
-  inherit overrideInfo;
+  inherit overlayInfo;
   sourceHashesDir = ./source-hashes;
 
   # flash-attn bundles cutlass and other dependencies as git submodules.

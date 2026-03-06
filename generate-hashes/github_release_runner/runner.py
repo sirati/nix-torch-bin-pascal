@@ -7,6 +7,8 @@ from common.sort_keys import sort_version_key
 from nix_writer.schema import DimSpec
 from nix_writer.organise import organize_wheels
 from nix_writer.per_version import write_binary_hashes_per_version
+# force_overwrite=True  → always write (used when --tag is explicit)
+# force_overwrite=False → skip existing files (used on full-scan runs)
 from source_fetcher import (
     SourceEntry,
     fetch_github_source_hash,
@@ -24,6 +26,7 @@ def run_binary_hashes(
     dimensions: list[str],
     version_spec: DimSpec,
     header_template: str,
+    force_overwrite: bool = True,
 ) -> dict:
     """
     Deduplicate post-releases, organise entries and write per-version
@@ -58,6 +61,12 @@ def run_binary_hashes(
         that need to enumerate versions afterwards (e.g. for source-hash
         generation).
 
+    force_overwrite:
+        When ``True`` (default), always write every per-version file even if
+        it already exists on disk.  Pass ``False`` for full-scan runs (no
+        ``--tag``) so that files generated in previous runs are not
+        needlessly regenerated.
+
     Exits
     -----
     Calls ``sys.exit(1)`` when *all_raw_entries* is empty after deduplication
@@ -85,6 +94,7 @@ def run_binary_hashes(
         header_template,
         version_spec,
         prefix_attrs_fn=lambda version: {"_version": version},
+        skip_existing=not force_overwrite,
     )
     return organized
 
@@ -147,11 +157,16 @@ def run_source_hashes(
     owner, repo = github_repo.split("/", 1)
     winning_tags = _winning_tags_from_tags(tags)
 
+    # When --tag is given explicitly, always overwrite the existing file so
+    # the caller can refresh a specific version.  On a full scan (no --tag),
+    # skip versions whose file already exists to avoid redundant network calls.
+    explicit_tag = bool(getattr(args, "tag", None))
+
     # Partition: already-cached vs. needs fetching
     to_fetch: dict[str, str] = {}   # base_version → winning_tag
     print(file=sys.stderr)
     for base_version in sorted(winning_tags.keys(), key=sort_version_key):
-        if source_hash_exists(source_hashes_dir, base_version):
+        if not explicit_tag and source_hash_exists(source_hashes_dir, base_version):
             print(
                 f"  source-hashes/v{base_version}.nix already exists — skipping.",
                 file=sys.stderr,
@@ -231,6 +246,7 @@ def run_all_hashes(
     args,
     *,
     with_submodules: bool = False,
+    force_overwrite: bool | None = None,
 ) -> None:
     """
     High-level entry point that runs the full hash-generation pipeline.
@@ -278,6 +294,11 @@ def run_all_hashes(
         print("Error: --source-only is not supported for this package (no source hashes).", file=sys.stderr)
         sys.exit(1)
 
+    # Determine whether to overwrite existing files.
+    # Default: overwrite when --tag is given (explicit refresh), skip otherwise.
+    if force_overwrite is None:
+        force_overwrite = bool(getattr(args, "tag", None))
+
     tags, too_old_tags = resolve_tags(github_repo, args)
 
     if source_only:
@@ -293,7 +314,10 @@ def run_all_hashes(
     # for all other tags.  On a full run tags == all_tags so the effect is the
     # same as a full overwrite.
     update_missing_digests(here, tags, missing_tags, too_old_tags)
-    run_binary_hashes(all_raw, binary_hashes_dir, schema, dimensions, version_spec, header_template)
+    run_binary_hashes(
+        all_raw, binary_hashes_dir, schema, dimensions, version_spec, header_template,
+        force_overwrite=force_overwrite,
+    )
 
     if source_hashes_dir is not None:
         run_source_hashes(tags, source_hashes_dir, github_repo, args, with_submodules=with_submodules)

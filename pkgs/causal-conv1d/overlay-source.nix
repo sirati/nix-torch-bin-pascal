@@ -5,18 +5,18 @@
 # is ABI-compatible with the resolved torch version.
 #
 # Arguments:
-#   overrideInfo - common package context attrset from high-level.nix
+#   overlayInfo  - common package context attrset from high-level.nix
 #                  (pkgs, cudaPackages, version, pname, srcOwner, srcRepo,
 #                   basePkg, changelog, torch)
 
-{ overrideInfo }:
+{ overlayInfo }:
 
 let
   buildSourcePackage =
     (import ../../concretise/source-build-helpers.nix).buildSourcePackage;
 in
 buildSourcePackage {
-  inherit overrideInfo;
+  inherit overlayInfo;
   sourceHashesDir = ./source-hashes;
 
   # The upstream pyproject.toml lists torch under [build-system] requires.
