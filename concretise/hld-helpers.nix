@@ -198,6 +198,60 @@
     map (n: builtins.substring 1 (builtins.stringLength n - 5) n) vNames;
 
   # --------------------------------------------------------------------------
+  # getVersionsFromAnyVersionFiles
+  #
+  # binaryHashesDir : path to the binary-hashes/ directory
+  # _cudaLabel      : ignored (CUDA-agnostic packages; kept for API consistency)
+  # pyVer           : e.g. "py313"
+  #
+  # Scans binaryHashesDir for files matching v{semver}.nix and returns the
+  # list of version strings for which the file contains a key for pyVer.
+  #
+  # Intended for CUDA-agnostic packages like triton whose wheels are
+  # identical across all CUDA versions.  Each per-version file has the
+  # structure: pyVer -> os -> arch -> wheelData
+  # Sentinel keys with a leading underscore (e.g. _version) are never valid
+  # pyVer values and are therefore safe to leave in the attrset.
+  # --------------------------------------------------------------------------
+  getVersionsFromAnyVersionFiles = binaryHashesDir: _cudaLabel: pyVer:
+    let
+      files  = builtins.readDir binaryHashesDir;
+      vNames = builtins.filter
+        (n: builtins.match "v[0-9]+\\.[0-9]+\\.[0-9]+\\.nix" n != null)
+        (builtins.attrNames files);
+    in
+    if vNames != []
+    then
+      let
+        versions = map
+          (n: builtins.substring 1 (builtins.stringLength n - 5) n)
+          vNames;
+      in
+      builtins.filter (v:
+        let h = import (binaryHashesDir + "/v${v}.nix");
+        in builtins.hasAttr pyVer h
+      ) versions
+    else
+      # Fallback: read the legacy any.nix when no per-version files exist yet.
+      # This keeps the system working during the transition period before
+      # `nix run .#default.triton.gen-hashes` has been run to produce per-version
+      # files.  Once per-version files are present any.nix is ignored and can be
+      # deleted.
+      let
+        anyFile = binaryHashesDir + "/any.nix";
+      in
+      if builtins.pathExists anyFile
+      then
+        let
+          attrset     = import anyFile;
+          allVersions = builtins.filter
+            (k: builtins.match "_.*" k == null)
+            (builtins.attrNames attrset);
+        in
+        builtins.filter (v: builtins.hasAttr pyVer attrset.${v}) allVersions
+      else [];
+
+  # --------------------------------------------------------------------------
   # getVersionsFromVersionFiles
   #
   # binaryHashesDir : path to the binary-hashes/ directory

@@ -30,29 +30,27 @@
 #   pkgs            - nixpkgs package set (pkgs.python3 must be the target Python)
 #   cudaPackages    - the CUDA package set to link against at runtime
 #   tritonVersion   - Triton version string, e.g. "3.6.0"
-#   binaryHashes    - plain attrset imported from binary-hashes/any.nix
-#                     (keyed by version string)
+#   versionHashes   - plain attrset imported from binary-hashes/v{version}.nix
+#                     (keyed by pyVer → os → arch; no outer version key)
 
-{ pkgs, cudaPackages, tritonVersion, binaryHashes }:
+{ pkgs, cudaPackages, tritonVersion, versionHashes }:
 
 let
   inherit (import ../../generate-hashes/lib.nix { inherit pkgs; })
     pyVer os arch;
 
-  # Look up wheel data from the provided binary-hashes attrset
-  versionData = binaryHashes.${tritonVersion}
-    or (throw "triton: no wheel for version ${tritonVersion} in provided hashes");
-
+  # Look up wheel data from the per-version attrset (pyVer -> os -> arch).
+  # Sentinel keys like _version are never valid pyVer values so no filtering is needed.
   wheelData =
-    if builtins.hasAttr pyVer versionData then
-      let pyData = versionData.${pyVer}; in
+    if builtins.hasAttr pyVer versionHashes then
+      let pyData = versionHashes.${pyVer}; in
       if builtins.hasAttr os pyData then
         let osData = pyData.${os}; in
         if builtins.hasAttr arch osData then
           osData.${arch}
         else throw "Unsupported architecture for triton ${tritonVersion}: ${arch} (available: ${builtins.toString (builtins.attrNames osData)})"
       else throw "Unsupported OS for triton ${tritonVersion}: ${os} (available: ${builtins.toString (builtins.attrNames pyData)})"
-    else throw "Unsupported Python version for triton ${tritonVersion}: ${pyVer} (available: ${builtins.toString (builtins.attrNames versionData)})";
+    else throw "Unsupported Python version for triton ${tritonVersion}: ${pyVer} (available: ${builtins.toString (builtins.attrNames versionHashes)})";
 
   # CUDA stubs dir — provides libcuda.so.1 for triton's JIT kernel linker.
   # Mirrors the @libcudaStubsDir@ substitution in nixpkgs patch 0002.

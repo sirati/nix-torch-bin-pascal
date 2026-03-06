@@ -62,6 +62,15 @@ Steps:
 
 Both helpers unpack `overrideInfo` fields (`pkgs`, `cudaPackages`, `pname`, `srcOwner`, `srcRepo`, `version`, `basePkg`, `changelog`, `torch`) internally.
 
+## Concretisation — store-path naming and duplicate-dep filtering
+
+`buildAndStamp` (in `concretise/default.nix`) replaces the former `buildOne` + `addMarker` pair.  It builds the derivation (bin or source) and immediately stamps it with:
+
+- `name = "python${basePython.version}-${pname}-${version}-torch${torchMM}-${cudaLabel}[-pascal][-bin]"` — full Python patch version (e.g. `3.13.11`) plus torch series digits, CUDA label, optional pascal flag, and `-bin` for wheel builds.  `pname` is unchanged so `ps.<pname>` lookups still work.
+- `passthru.concretiseMarker` — opaque key for cross-call mixing detection.
+
+`filterExtras` (used when building `env` and `extendEnv`) drops extra packages whose `pname`/`name` matches either a directly concretise-managed package (`concreteNameSet`) or a package directly propagated by one of those managed packages (`propagatedByConcreteSet`).  This prevents `buildEnv` conflicts when a concrete package propagates e.g. `einops` from `basePython.pkgs` while the user also passes `ps.einops` (from `augmentedPython.pkgs`) via `extraPythonPackages` — both are the same version but have different store paths because `augmentedPython` is a distinct derivation.
+
 ## Hash and wheel data generation
 
 Binary wheel hashes: `pkgs/<pkg>/binary-hashes/`.  Source hashes: `pkgs/<pkg>/source-hashes/`.  Each package has its own `generate-hashes.py` entry point.
@@ -76,13 +85,13 @@ Shared Python tooling in [`generate-hashes/`](generate-hashes/): `common/`, `nix
 
 ## Triton HLD
 
-Triton is a separate HLD (`pkgs/triton/`) with pre-built wheels from `https://download.pytorch.org/whl/triton/`. Wheels are CUDA-agnostic (same wheel for cu126/cu128/cu130); per-CUDA-label hash files contain identical content to reuse `getVersionsFromCudaFiles`. Triton has `highLevelDeps = {}` (leaf node). Torch declares `highLevelDeps = { inherit triton; }` so concretise automatically pulls it in and passes `resolvedDeps.triton` to `torch-bin.override { inherit triton; }`.
+Triton is a separate HLD (`pkgs/triton/`) with pre-built wheels from `https://download.pytorch.org/whl/triton/`. Wheels are CUDA-agnostic (same wheel for cu126/cu128/cu130). Triton has `highLevelDeps = {}` (leaf node). Torch declares `highLevelDeps = { inherit triton; }` so concretise automatically pulls it in and passes `resolvedDeps.triton` to `torch-bin.override { inherit triton; }`.
+
+Binary hashes live in `pkgs/triton/binary-hashes/v{version}.nix` — one file per triton version, each containing the CUDA-agnostic hash data for that version (`pyVer → os → arch → wheelData`).  `getVersionsFromAnyVersionFiles` scans for `v{semver}.nix` files and ignores `cudaLabel` entirely.  During the transition from the old `any.nix` layout, both helpers fall back to `any.nix` if no per-version files exist yet; run `nix run .#default.triton.gen-hashes` to migrate and then delete `any.nix`.
 
 `pkgs/triton/override.nix` extends the upstream `triton-bin` derivation with two NixOS compatibility fixes in `postFixup`:
-1. **ldconfig patch**: `driver.py` calls `/sbin/ldconfig -p` directly; patched via `sed` to wrap it in `os.path.exists("/sbin/ldconfig")` check, producing empty string on NixOS instead of `FileNotFoundError`.
-2. **ptxas symlink**: links `cudaPackages.cuda_nvcc/bin/ptxas` into `triton/backends/nvidia/ptxas` (upstream `triton-bin` postFixup already links into `triton/third_party/cuda/bin/`; both paths are preserved).
-
-The env var `TRITON_LIBCUDA_PATH` in devShells/test wrappers is kept as a belt-and-suspenders fallback for users running patched triton in contexts where `/run/opengl-driver/lib` is accessible.
+1. **ldconfig patch**: `driver.py` calls `/sbin/ldconfig -p` directly; patched via `sed` to insert an `os.path.exists(cudaStubsDir)` early-return guard so triton finds `libcuda.so.1` via the CUDA stubs without invoking `/sbin/ldconfig` (which does not exist on NixOS).
+2. **C compiler patch**: `triton/runtime/build.py` searches for `gcc`/`clang` on `PATH` to compile `driver.c` on first use; patched to fall back to the Nix-provided `gcc` so compilation works outside a build sandbox.
 
 ## Retry wrappers
 

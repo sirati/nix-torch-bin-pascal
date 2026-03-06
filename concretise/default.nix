@@ -362,11 +362,26 @@ let
     {}
     sortedHLDs;
 
-  buildOne = resolvedDeps: hld:
+  # Digits-only torch series string used in store-path name suffixes.
+  # e.g. torch = "2.10" → _torchSeriesDigits = "210"
+  _torchSeriesDigits = lib.replaceStrings [ "." ] [ "" ] torch;
+
+  # Build a concrete package for *hld* given already-resolved *resolvedDeps*,
+  # then stamp the resulting derivation so that its Nix store-path name encodes
+  # the torch series, CUDA label, pascal flag, and build type (bin vs. source).
+  #
+  # Example store-path name transformation:
+  #   flash-attention-2.8.3  →  flash-attention-2.8.3-torch210-cu128-bin
+  #   causal-conv1d-1.6.0    →  causal-conv1d-1.6.0-torch210-cu128
+  #   torch-2.10.0           →  torch-2.10.0-torch210-cu128-bin
+  #
+  # The stamp also injects passthru.concretiseMarker for cross-call mixing
+  # detection in checkedWithPackages.
+  buildAndStamp = resolvedDeps: hld:
     let
       sel     = _selectVersion hld;
       version = sel.version;
-      args = {
+      args    = {
         pkgs = pkgsForBuild;
         inherit cudaPackages cudaLabel resolvedDeps version;
         # inherit wrappers; # re-enable together with wrappers above
@@ -376,30 +391,47 @@ let
       # incompatible with the resolved dependencies (e.g. causal-conv1d wheels
       # built against torch <= 2.8 are broken at runtime against torch >= 2.9).
       # When false and allowBuildingFromSource is set, we fall back to
-      # buildSource (passing the resolved version so the source build knows
-      # exactly which release to compile).
+      # buildSource.
       binCompatible = version != null &&
         hld.canBuildBin { inherit resolvedDeps version cudaLabel; };
+      drv =
+        if binCompatible
+          then hld.buildBin args
+          else if allowBuildingFromSource
+            then hld.buildSource args
+            else throw (
+              "concretise: no usable pre-built wheel for '${hld.packageName}' "
+              + "with cudaLabel '${cudaLabel}' and Python ${python} (${pyVer})"
+              + (if version == null
+                 then
+                   let c = allVersionConstraints.${hld.packageName} or {}; in
+                   if c != {}
+                   then " (no binary version found after applying versionConstraints: "
+                        + "${builtins.toJSON c}; unconstrained versions: "
+                        + lib.concatStringsSep ", " (lib.sort lib.versionOlder sel.allVersions)
+                        + ")"
+                   else " (no binary version found)"
+                 else " (version ${version} is ABI-incompatible with resolved dependencies)")
+              + ". Set allowBuildingFromSource = true to build from source."
+            );
+      # Suffix appended to the Nix store-path name to make builds for different
+      # torch/CUDA/pascal combinations visually distinct in the store.
+      nameSuffix =
+        "-torch${_torchSeriesDigits}"
+        + "-${cudaLabel}"
+        + lib.optionalString pascal "-pascal"
+        + lib.optionalString binCompatible "-bin";
     in
-    if binCompatible
-      then hld.buildBin args
-      else if allowBuildingFromSource
-        then hld.buildSource args
-        else throw (
-          "concretise: no usable pre-built wheel for '${hld.packageName}' "
-          + "with cudaLabel '${cudaLabel}' and Python ${python} (${pyVer})"
-          + (if version == null
-             then
-               let c = allVersionConstraints.${hld.packageName} or {}; in
-               if c != {}
-               then " (no binary version found after applying versionConstraints: "
-                    + "${builtins.toJSON c}; unconstrained versions: "
-                    + lib.concatStringsSep ", " (lib.sort lib.versionOlder sel.allVersions)
-                    + ")"
-               else " (no binary version found)"
-             else " (version ${version} is ABI-incompatible with resolved dependencies)")
-          + ". Set allowBuildingFromSource = true to build from source."
-        );
+    drv.overrideAttrs (old: {
+      # pname is intentionally left unchanged so ps.<pname> lookups still work.
+      # Use basePython.version (e.g. "3.13.11") rather than the
+      # pythonVersion attribute ("3.13") that buildPythonPackage embeds in
+      # the default name, so the full patch release is visible in the store.
+      name     = "python${basePython.version}-${old.pname}-${old.version}${nameSuffix}";
+      passthru = (old.passthru or {}) // {
+        concretiseMarker = concretiseMarkerKey;
+      };
+    });
 
   # ── Strict fold over sorted packages ─────────────────────────────────────
 
@@ -461,18 +493,11 @@ let
   concretiseMarkerKey =
     "cuda=${cuda},pascal=${if pascal then "true" else "false"},python=${python}";
 
-  # Stamp a derivation with the marker.  Works for any package that supports
-  # overrideAttrs (all stdenv.mkDerivation / buildPythonPackage descendants).
-  addMarker = drv:
-    drv.overrideAttrs (old: {
-      passthru = (old.passthru or {}) // {
-        concretiseMarker = concretiseMarkerKey;
-      };
-    });
+
 
   concretePackages =
     lib.foldl'
-      (acc: hld: acc // { ${hld.packageName} = addMarker (buildOne acc hld); })
+      (acc: hld: acc // { ${hld.packageName} = buildAndStamp acc hld; })
       {}
       sortedHLDs;
 
@@ -537,13 +562,42 @@ let
       );
     in byKey // byPname;
 
-  # Drop any package from `extras` whose pname/name collides with a
-  # concretise-managed package.  Packages without a recognisable name attribute
-  # are passed through unchanged.
+  # Build a set of names propagated directly by concrete packages.
+  #
+  # Concrete packages are built against basePython.pkgs (via pkgsForBuild),
+  # while extraPythonPackages receives ps = augmentedPython.pkgs.  Although
+  # basePython and augmentedPython produce the same Python binary, they are
+  # different Nix derivation objects; every package built against them
+  # therefore has a distinct store path — even for packages like "einops" that
+  # do not depend on torch at all.
+  #
+  # Consequence: if a concrete package propagates e.g. "einops" (from
+  # basePython.pkgs) and the user also requests ps.einops (from
+  # augmentedPython.pkgs), buildEnv sees two paths for the same Python module
+  # and aborts with a "conflicting subpath" error.
+  #
+  # Fix: treat the direct propagatedBuildInputs of every concrete package as
+  # also "owned" by the pipeline.  filterExtras then silently drops any
+  # extraPythonPackages entry whose name matches — the version already in the
+  # closure (via the concrete package) wins.
+  propagatedByConcreteSet =
+    builtins.listToAttrs
+      (lib.concatMap (p:
+        let n = p.pname or (p.name or null); in
+        if n != null then [{ name = n; value = true; }] else []
+      ) (lib.concatMap
+          (pkg: pkg.propagatedBuildInputs or [])
+          (lib.attrValues concretePackages)));
+
+  # Drop any package from `extras` whose pname/name collides with either a
+  # directly concretise-managed package or a package already propagated into
+  # the env by one of those managed packages.  Packages without a recognisable
+  # name attribute are passed through unchanged.
   filterExtras = extras:
     lib.filter (p:
       let n = p.pname or (p.name or null);
-      in n == null || !(concreteNameSet ? ${n})
+      in n == null ||
+         (!(concreteNameSet ? ${n}) && !(propagatedByConcreteSet ? ${n}))
     ) extras;
 
   env = checkedPython.withPackages (ps:
@@ -566,13 +620,6 @@ let
 
   devShell = pkgs.mkShell {
     packages = [ env ];
-
-    # Triton's NVIDIA backend calls /sbin/ldconfig to discover libcuda.so.1,
-    # which does not exist on NixOS.  Setting TRITON_LIBCUDA_PATH makes triton
-    # return this path immediately without invoking ldconfig.
-    # /run/opengl-driver/lib is the standard NixOS symlink farm for the active
-    # NVIDIA driver libraries (populated by hardware.nvidia or hardware.opengl).
-    TRITON_LIBCUDA_PATH = "/run/opengl-driver/lib";
   };
 
 in

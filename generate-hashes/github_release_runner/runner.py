@@ -265,7 +265,7 @@ def run_all_hashes(
     """
     from github_release_runner.tags import resolve_tags
     from github_release_runner.collector import collect_all_wheels
-    from github_release_runner.missing_digests import write_missing_digests
+    from github_release_runner.missing_digests import update_missing_digests
 
     source_only = getattr(args, "source_only", False)
     skip_source = getattr(args, "skip_source", False)
@@ -288,7 +288,11 @@ def run_all_hashes(
         return
 
     all_raw, missing_tags = collect_all_wheels(github_repo, tags, args.token, parse_wheel_fn)
-    write_missing_digests(here, missing_tags, too_old_tags)
+    # Use update_missing_digests so that partial runs (e.g. --tag v1.6.0) only
+    # update entries for the tags actually processed, preserving existing entries
+    # for all other tags.  On a full run tags == all_tags so the effect is the
+    # same as a full overwrite.
+    update_missing_digests(here, tags, missing_tags, too_old_tags)
     run_binary_hashes(all_raw, binary_hashes_dir, schema, dimensions, version_spec, header_template)
 
     if source_hashes_dir is not None:

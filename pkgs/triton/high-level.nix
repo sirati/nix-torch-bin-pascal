@@ -48,10 +48,10 @@ in
   inherit srcOwner srcRepo mkChangelog mkOverrideInfo;
 
   # ── Binary availability ────────────────────────────────────────────────────
-  # triton wheels are CUDA-agnostic; a single binary-hashes/any.nix covers all
-  # CUDA versions.  getVersionsFromCudaFiles falls back to any.nix automatically
-  # when no {cudaLabel}.nix is present in the directory.
-  getVersions = hldHelpers.getVersionsFromCudaFiles ./binary-hashes;
+  # triton wheels are CUDA-agnostic; per-version files v{version}.nix cover all
+  # CUDA versions.  getVersionsFromAnyVersionFiles scans for v{semver}.nix and
+  # filters by pyVer, ignoring the cudaLabel entirely.
+  getVersions = hldHelpers.getVersionsFromAnyVersionFiles ./binary-hashes;
 
   # ── High-level dependencies ────────────────────────────────────────────────
   # Triton has no high-level deps; it is a leaf dependency.
@@ -65,10 +65,20 @@ in
   # triton does not use resolvedDeps (it has no deps).
   buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
     let
-      # Triton wheels are CUDA-agnostic; any.nix covers all CUDA versions.
-      binaryHashes = import ./binary-hashes/any.nix;
+      perVersionPath = ./binary-hashes + "/v${version}.nix";
+      legacyAnyPath  = ./binary-hashes + "/any.nix";
+
+      # Prefer the per-version file (new layout); fall back to the legacy
+      # any.nix during the transition before gen-hashes has been re-run.
+      versionHashes =
+        if builtins.pathExists perVersionPath then import perVersionPath
+        else if builtins.pathExists legacyAnyPath then
+          (import legacyAnyPath).${version}
+          or (throw "triton buildBin: version ${version} not found in binary-hashes/any.nix")
+        else throw "triton buildBin: no binary hashes found for version ${version}";
+
       base = import ./override.nix {
-        inherit pkgs cudaPackages binaryHashes;
+        inherit pkgs cudaPackages versionHashes;
         tritonVersion = version;
       };
     in

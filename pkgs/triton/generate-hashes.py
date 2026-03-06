@@ -26,7 +26,8 @@ from common import (
     sort_version_key,
     sort_pyver_key_ft,
 )
-from nix_writer import DimSpec, organize_wheels, write_binary_hashes_nix
+from nix_writer import DimSpec, organize_wheels
+from nix_writer.per_version import write_binary_hashes_per_version
 from source_triton import TritonWheelSource
 
 # ORIGIN_TYPE ("torch-website") is injected by makeGenHashesApp from the HLD.
@@ -35,31 +36,36 @@ from source_triton import TritonWheelSource
 # Output configuration
 # ---------------------------------------------------------------------------
 
-OUTPUT_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "binary-hashes")
-OUTPUT_PATH = os.path.join(OUTPUT_DIR, "any.nix")
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "binary-hashes")
 
-HEADER = """\
+# Header template for each per-version file.  {version} is substituted by
+# write_binary_hashes_per_version when writing each file.
+HEADER_TEMPLATE = """\
 # WARNING: Auto-generated file. Do not edit manually!
 # Source:  https://download.pytorch.org/whl/triton/
 # To regenerate: nix run .#default.triton.gen-hashes
 #
-# Triton wheels are CUDA-agnostic; a single any.nix is used for all CUDA
-# versions.  getVersionsFromCudaFiles falls back to any.nix automatically.
-# _cudaLabel = "*" signals that this file is not specific to any CUDA label.
+# Triton {version} binary-wheel hashes.
+# Triton wheels are CUDA-agnostic (same wheel for all CUDA versions).
+# _version records the triton version this file was generated for.
 #
-# Structure: version -> pythonVersion -> os -> arch
+# Structure: pythonVersion -> os -> arch
 #   pythonVersion: py310, py311, py312, py313, py313-freethreaded
 #   os: linux
 #   arch: x86_64"""
 
+# Schema for the content *inside* each per-version file (no version level).
 SCHEMA = [
-    DimSpec("version", quoted=True, sort_key=sort_version_key),
-    DimSpec("pyVer",   sort_key=sort_pyver_key_ft),
+    DimSpec("pyVer", sort_key=sort_pyver_key_ft),
     DimSpec("os"),
     DimSpec("arch"),
 ]
 
+# Full dimension list used by organize_wheels; version is the outermost split key.
 DIMENSIONS = ["version", "pyVer", "os", "arch"]
+
+# DimSpec for the version level — used only for sort ordering of output files.
+VERSION_SPEC = DimSpec("version", quoted=True, sort_key=sort_version_key)
 
 
 # ---------------------------------------------------------------------------
@@ -155,13 +161,13 @@ def _generate() -> None:
     organized = organize_wheels(entries, DIMENSIONS)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    write_binary_hashes_nix(
-        OUTPUT_PATH,
+    write_binary_hashes_per_version(
+        OUTPUT_DIR,
         organized,
         SCHEMA,
-        HEADER,
-        wrap_in_func=False,
-        prefix_attrs={"_cudaLabel": "*"},
+        HEADER_TEMPLATE,
+        VERSION_SPEC,
+        prefix_attrs_fn=lambda version: {"_version": version},
     )
 
 

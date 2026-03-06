@@ -19,7 +19,6 @@ let
   makeTestApp = envPkg: name: {
     type    = "app";
     program = toString (pkgs.writeShellScript "run-tests-${name}" ''
-      export TRITON_LIBCUDA_PATH="/run/opengl-driver/lib"
       exec ${envPkg}/bin/python3 ${pkgs.writeText "test-torch.py" testScriptContent}
     '');
   };
@@ -157,20 +156,28 @@ let
     allowBuildingFromSource = true;
   };
 
-  # ── Test: mamba-ssm-impure-local-autotune, Python 3.13, CUDA 12.8 ─────────
-  # Includes the autotune package which installs a .pth hook that sets
-  # TRITON_CACHE_DIR automatically on Python startup, and provides
-  # `python -m mamba_ssm_autotune` to pre-warm the triton kernel cache.
-  # mamba-ssm and its deps (torch, causal-conv1d) are pulled in transitively.
-  testMambaAutotuneResult = concretise {
+  # ── Test: torch-only, Python 3.13, CUDA 12.6 ─────────────────────────────
+  testTorchCu126Result = concretise {
+    inherit pkgs;
+    mlPackages              = [ pytorchScope.torch ];
+    python                  = "3.13";
+    cuda                    = "12.6";
+    torch                   = "2.10";
+    allowBuildingFromSource = false;
+  };
+
+  # ── Test: torch + flash-attn binary wheel, Python 3.13, CUDA 12.6 ────────
+  # flash-attn 2.8.3 has py313 wheels for torch 2.8 on cu12.
+  testFlashAttnBinCu126Result = concretise {
     inherit pkgs;
     mlPackages = [
-      pytorchScope."mamba-ssm-impure-local-autotune"
+      pytorchScope.torch
+      pytorchScope."flash-attn"
     ];
     python                  = "3.13";
-    cuda                    = "12.8";
-    torch                   = "2.10";
-    allowBuildingFromSource = true;
+    cuda                    = "12.6";
+    torch                   = "2.8";
+    allowBuildingFromSource = false;
   };
 
 in
@@ -186,7 +193,8 @@ in
     test-all-py313-cu128                       = testAllCu128Result.env;
     test-mamba-py313-cu128                     = testMambaCu128Result.env;
     test-mamba-source-py313-cu128              = testMambaSourceCu128Result.env;
-    test-mamba-autotune-py313-cu128            = testMambaAutotuneResult.env;
+    test-torch-py313-cu126                     = testTorchCu126Result.env;
+    test-flash-attn-bin-py313-cu126            = testFlashAttnBinCu126Result.env;
   };
 
   devShells = {
@@ -200,7 +208,8 @@ in
     test-all-py313-cu128                       = testAllCu128Result.devShell;
     test-mamba-py313-cu128                     = testMambaCu128Result.devShell;
     test-mamba-source-py313-cu128              = testMambaSourceCu128Result.devShell;
-    test-mamba-autotune-py313-cu128            = testMambaAutotuneResult.devShell;
+    test-torch-py313-cu126                     = testTorchCu126Result.devShell;
+    test-flash-attn-bin-py313-cu126            = testFlashAttnBinCu126Result.devShell;
   };
 
   apps = {
@@ -214,10 +223,12 @@ in
     test-all-py313-cu128                       = makeTestApp testAllCu128Result.env               "test-all-py313-cu128";
     test-mamba-py313-cu128                     = makeTestApp testMambaCu128Result.env             "test-mamba-py313-cu128";
     test-mamba-source-py313-cu128              = makeTestApp testMambaSourceCu128Result.env       "test-mamba-source-py313-cu128";
+    test-torch-py313-cu126                     = makeTestApp testTorchCu126Result.env             "test-torch-py313-cu126";
+    test-flash-attn-bin-py313-cu126            = makeTestApp testFlashAttnBinCu126Result.env      "test-flash-attn-bin-py313-cu126";
     test-mamba-autotune-py313-cu128            = {
       type    = "app";
       program = toString (pkgs.writeShellScript "run-autotune-py313-cu128" ''
-        exec ${testMambaAutotuneResult.env}/bin/python3 -m mamba_ssm_autotune "$@"
+        exec ${testMambaSourceCu128Result.env}/bin/python3 -m mamba_ssm_autotune "$@"
       '');
     };
   };

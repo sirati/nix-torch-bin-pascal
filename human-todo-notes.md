@@ -123,3 +123,24 @@ keep in mind that torch/triton and flash-attn/causal-conv1d/mamba-ssm work quite
 
 
 i have noticed calling generate-hashes will corrupt the missing-digests file, if called e.g. for a specific tag. missing-digests instead should be updated.
+
+
+i think all this override stuff is actually an accident and we meant to say overlay:./override.nix {
+      overrideInfo = mkOverrideInfo
+if thats true lets rename all these overrides to overlays. also lets change override-bin.nix to override-bin.nix / overlay-bin.nix
+
+
+i have noticed for running binary-hashed with a tag, it does all the parsing, and then realised the file already exists, and discards the work. instead when run explicitly with a tag, it should always replace the file. when run without a tag, it should only do fetching and parsing, if the file does not exist already.
+
+
+```
+ buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
+    let
+      # Triton wheels are CUDA-agnostic; any.nix covers all CUDA versions.
+      binaryHashes = import ./binary-hashes/any.nix;
+      perVersionPath = ./binary-hashes + "/v${version}.nix";
+      legacyAnyPath  = ./binary-hashes + "/any.nix";
+
+      # Prefer the per
+```
+i have noticed that some code expects hashes files to have a specific name. this shouldnt be a file inside /binary-hashes/ or /source-hashes/ should be able to have any name and all information must be contained in the content and not depend on the file name. the naming is there more for the hash generator to detected done work and for git commits, do not be as noisy (generated files may change a lot, but if the file is not touched because the generation only touches separate content and places it into a new file, this becomes a none-concern)
