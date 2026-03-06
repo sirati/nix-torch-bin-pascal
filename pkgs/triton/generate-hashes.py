@@ -1,0 +1,173 @@
+#!/usr/bin/env nix-shell
+#!nix-shell -i python3 -p python3 nix
+
+"""
+Generate triton/binary-hashes/any.nix from the PyTorch wheel index.
+
+Triton wheels are CUDA-agnostic (same wheel for all CUDA versions — they
+JIT-compile kernels at runtime).  A single any.nix file is generated;
+the getVersionsFromCudaFiles helper falls back to any.nix when no
+CUDA-label-specific file exists in the binary-hashes/ directory.
+
+Run from the project root:
+  nix-shell pkgs/triton/generate-hashes.py
+"""
+
+import os
+import re
+import sys
+
+# Make the shared generate-hashes modules importable.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../..", "generate-hashes"))
+
+from common import (
+    deduplicate_post_versions,
+    parse_wheel_platform,
+    sort_version_key,
+    sort_pyver_key_ft,
+)
+from nix_writer import DimSpec, organize_wheels, write_binary_hashes_nix
+from source_triton import TritonWheelSource
+
+# ---------------------------------------------------------------------------
+# Output configuration
+# ---------------------------------------------------------------------------
+
+OUTPUT_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "binary-hashes")
+OUTPUT_PATH = os.path.join(OUTPUT_DIR, "any.nix")
+
+HEADER = """\
+# WARNING: Auto-generated file. Do not edit manually!
+# Source:  https://download.pytorch.org/whl/triton/
+# To regenerate: nix-shell pkgs/triton/generate-hashes.py
+#
+# Triton wheels are CUDA-agnostic; a single any.nix is used for all CUDA
+# versions.  getVersionsFromCudaFiles falls back to any.nix automatically.
+# _cudaLabel = "*" signals that this file is not specific to any CUDA label.
+#
+# Structure: version -> pythonVersion -> os -> arch
+#   pythonVersion: py310, py311, py312, py313, py313-freethreaded
+#   os: linux
+#   arch: x86_64"""
+
+SCHEMA = [
+    DimSpec("version", quoted=True, sort_key=sort_version_key),
+    DimSpec("pyVer",   sort_key=sort_pyver_key_ft),
+    DimSpec("os"),
+    DimSpec("arch"),
+]
+
+DIMENSIONS = ["version", "pyVer", "os", "arch"]
+
+
+# ---------------------------------------------------------------------------
+# Wheel filename parser
+# ---------------------------------------------------------------------------
+
+def _triton_major_version(version: str) -> int:
+    try:
+        return int(version.split(".")[0])
+    except (ValueError, IndexError):
+        return 0
+
+
+def parse_wheel(entry) -> dict | None:
+    """
+    Map a TritonWheelSource entry to the path dict used for nesting.
+
+    The entry.name has the form:
+        triton-{version}-{abitag}-{abitag}-{platform}.whl
+    e.g.
+        triton-3.6.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+        triton-3.6.0-cp313t-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+    """
+    m = re.match(
+        r"^triton-"
+        r"(\d+\.\d+\.\d+(?:\.post\d+)?)"  # group 1: version
+        r"-(cp\d+t?)"                      # group 2: abi tag
+        r"-cp\d+t?"                         # abi tag repeated (ignored)
+        r"-([\w]+(?:\.[\w]+)*)"             # group 3: platform tag (may contain dots)
+        r"\.whl$",
+        entry.name,
+    )
+    if m is None:
+        return None
+
+    version, abitag, platform = m.groups()
+
+    # Platform tag may be compound like "manylinux_2_27_x86_64.manylinux_2_28_x86_64"
+    # Take the first parseable segment.
+    os_arch = None
+    for p in platform.split("."):
+        result = parse_wheel_platform(p)
+        if result is not None:
+            os_arch = result
+            break
+    if os_arch is None:
+        return None
+    os_name, arch = os_arch
+
+    is_ft  = abitag.endswith("t")
+    pynum  = abitag[2:].rstrip("t")
+    py_key = f"py{pynum}-freethreaded" if is_ft else f"py{pynum}"
+
+    return {"version": version, "pyVer": py_key, "os": os_name, "arch": arch}
+
+
+# ---------------------------------------------------------------------------
+# Generation
+# ---------------------------------------------------------------------------
+
+def generate() -> None:
+    print("Fetching triton wheel index …")
+    source = TritonWheelSource(min_major=3)
+
+    entries = []
+    skipped = 0
+    for entry in source.fetch_wheels():
+        path = parse_wheel(entry)
+        if path is None:
+            print(f"  SKIP  {entry.name}", file=sys.stderr)
+            skipped += 1
+            continue
+        entries.append((path, entry.to_leaf()))
+
+    if skipped:
+        print(f"  ({skipped} wheel(s) skipped due to unrecognised format)")
+
+    # Keep only triton >= 3
+    before_filter = len(entries)
+    entries = [
+        (p, e) for p, e in entries
+        if _triton_major_version(p["version"]) >= 3
+    ]
+    dropped = before_filter - len(entries)
+    if dropped:
+        print(f"  ({dropped} wheel(s) dropped for triton < 3)")
+
+    # Deduplicate .postN releases
+    entries = deduplicate_post_versions(entries)
+
+    if not entries:
+        print("No wheels matched — index may be empty or unreachable.", file=sys.stderr)
+        sys.exit(1)
+
+    organized = organize_wheels(entries, DIMENSIONS)
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    write_binary_hashes_nix(
+        OUTPUT_PATH,
+        organized,
+        SCHEMA,
+        HEADER,
+        wrap_in_func=False,
+        prefix_attrs={"_cudaLabel": "*"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    generate()

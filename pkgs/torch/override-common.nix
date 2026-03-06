@@ -11,7 +11,7 @@
 #   binaryHashes  - plain attrset imported from binary-hashes/{cudaLabel}.nix
 #                   (keyed by version string)
 
-{ pkgs, cudaPackages, torchVersion, binaryHashes }:
+{ pkgs, cudaPackages, torchVersion, binaryHashes, triton }:
 
 let
   inherit (import ../../generate-hashes/lib.nix { inherit pkgs; })
@@ -37,7 +37,7 @@ in
 # The same pre-built wheel works across regular and Pascal CUDA variants;
 # the only runtime difference is which cuDNN / cuTENSOR libraries are present.
 (pkgs.python3Packages.torch-bin.override {
-  inherit cudaPackages;
+  inherit cudaPackages triton;
 }).overrideAttrs (old: {
   version = torchVersion;
   src     = pkgs.fetchurl wheelData;

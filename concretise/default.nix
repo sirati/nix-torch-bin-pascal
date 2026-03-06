@@ -566,6 +566,13 @@ let
 
   devShell = pkgs.mkShell {
     packages = [ env ];
+
+    # Triton's NVIDIA backend calls /sbin/ldconfig to discover libcuda.so.1,
+    # which does not exist on NixOS.  Setting TRITON_LIBCUDA_PATH makes triton
+    # return this path immediately without invoking ldconfig.
+    # /run/opengl-driver/lib is the standard NixOS symlink farm for the active
+    # NVIDIA driver libraries (populated by hardware.nvidia or hardware.opengl).
+    TRITON_LIBCUDA_PATH = "/run/opengl-driver/lib";
   };
 
 in

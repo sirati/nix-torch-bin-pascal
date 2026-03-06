@@ -77,5 +77,9 @@ in
 
   devShell = pkgs.mkShell {
     packages = [ env ];
+
+    # Required on NixOS: triton calls /sbin/ldconfig which doesn't exist.
+    # This env var makes triton skip ldconfig and use the given path directly.
+    TRITON_LIBCUDA_PATH = "/run/opengl-driver/lib";
   };
 }

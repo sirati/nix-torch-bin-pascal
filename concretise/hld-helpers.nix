@@ -147,13 +147,23 @@
   # --------------------------------------------------------------------------
   getVersionsFromCudaFiles = binaryHashesDir: cudaLabel: pyVer:
     let
-      f = binaryHashesDir + "/${cudaLabel}.nix";
+      specific = binaryHashesDir + "/${cudaLabel}.nix";
+      any      = binaryHashesDir + "/any.nix";
+      # Prefer an exact CUDA-label file; fall back to any.nix for CUDA-agnostic
+      # packages (e.g. triton) that ship a single wheel for all CUDA versions.
+      f =
+        if builtins.pathExists specific then specific
+        else if builtins.pathExists any  then any
+        else null;
     in
-    if builtins.pathExists f
+    if f != null
     then
       let
         attrset     = import f;
-        allVersions = builtins.filter (k: k != "_cudaLabel") (builtins.attrNames attrset);
+        # Filter out metadata sentinel keys (_cudaLabel = "cu128" or "*", etc.)
+        allVersions = builtins.filter
+          (k: builtins.match "_.*" k == null)
+          (builtins.attrNames attrset);
       in
       # Only include a version if the hash file contains a wheel entry for the
       # requested Python version.  This ensures getVersions returns [] (and

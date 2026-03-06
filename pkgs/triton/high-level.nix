@@ -1,10 +1,7 @@
-# High-level derivation for PyTorch.
+# High-level derivation for Triton.
 #
-# torch depends on triton at the high level.  When concretised, the
-# resolved concrete triton derivation is available via resolvedDeps."triton".
-#
-# getVersions is provided by the shared helper injected from pkgs/default.nix.
-# torch uses the per-CUDA-label layout: binary-hashes/{cudaLabel}.nix
+# Triton wheels are distributed via download.pytorch.org (same as torch),
+# and are CUDA-agnostic (same wheel for all CUDA versions — JIT-compiles at runtime).
 #
 # This is NOT a buildable derivation.  Import it and pass it (along with other
 # high-level derivations) to concretise.nix, which resolves the concrete build.
@@ -16,26 +13,21 @@
 #   let pp = inputs.this-flake.pytorch-packages; in
 #   pp.concretise {
 #     inherit pkgs;
-#     mlPackages = with pp; [ torch ];  # triton is pulled in automatically as a dep
+#     mlPackages = with pp; [ torch ];  # triton is pulled in automatically via torch deps
 #     python   = "3.13";
 #     cuda     = "12.8";
 #   };
 
-{ triton, hldHelpers, packageName }:
-
-# Fail early if the caller passed something other than a high-level derivation.
-assert hldHelpers.isHLD triton;
+{ hldHelpers, packageName }:
 
 let
   # ── Package identity ───────────────────────────────────────────────────────
-  # pname and nixpkgsAttr both equal packageName ("torch") and are therefore
+  # pname and nixpkgsAttr both equal packageName ("triton") and are therefore
   # omitted from the returned attrset; hld-type.nix validate fills them in
   # automatically.
-  # Torch binaries are distributed via download.pytorch.org, not GitHub
+  # Triton binaries are distributed via download.pytorch.org, not GitHub
   # releases, so origin-type = "torch-website".  mkChangelog and mkOverrideInfo
   # are required for "torch-website" and must be provided explicitly here.
-  # buildBin does not currently use them; they are available for future
-  # buildSource use.
   srcOwner    = "pytorch";
   srcRepo     = "pytorch";
   mkChangelog = hldHelpers."github-release-tag" srcOwner srcRepo;
@@ -51,33 +43,33 @@ in
   "origin-type" = "torch-website";
 
   # ── Identity fields ────────────────────────────────────────────────────────
-  # pname and nixpkgsAttr are omitted (both equal packageName "torch");
+  # pname and nixpkgsAttr are omitted (both equal packageName "triton");
   # hld-type.nix validate fills them in automatically.
   inherit srcOwner srcRepo mkChangelog mkOverrideInfo;
 
   # ── Binary availability ────────────────────────────────────────────────────
-  # torch uses per-CUDA-label files: binary-hashes/{cudaLabel}.nix
-  # Each file is a plain attrset keyed by version string.
+  # triton wheels are CUDA-agnostic; a single binary-hashes/any.nix covers all
+  # CUDA versions.  getVersionsFromCudaFiles falls back to any.nix automatically
+  # when no {cudaLabel}.nix is present in the directory.
   getVersions = hldHelpers.getVersionsFromCudaFiles ./binary-hashes;
 
   # ── High-level dependencies ────────────────────────────────────────────────
-  # Torch depends on triton at the high level.  When concretised, the
-  # resolved concrete triton derivation is available via resolvedDeps."triton".
-  highLevelDeps = { inherit triton; };
+  # Triton has no high-level deps; it is a leaf dependency.
+  highLevelDeps = {};
 
   # ── Build from pre-built wheel ─────────────────────────────────────────────
   #
   # Received from concretise:
   #   { pkgs, cudaPackages, cudaLabel, resolvedDeps, version }
   #
-  # torch depends on triton; the resolved triton derivation is in resolvedDeps.
+  # triton does not use resolvedDeps (it has no deps).
   buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
     let
-      binaryHashes = import (./binary-hashes + "/${cudaLabel}.nix");
-      base = import ./override-common.nix {
+      # Triton wheels are CUDA-agnostic; any.nix covers all CUDA versions.
+      binaryHashes = import ./binary-hashes/any.nix;
+      base = import ./override.nix {
         inherit pkgs cudaPackages binaryHashes;
-        torchVersion = version;
-        triton = resolvedDeps.triton;
+        tritonVersion = version;
       };
     in
     # (import ../../nix-retry-wrapper/inject-wrappers.nix wrappers) base  # re-enable wrappers
@@ -85,5 +77,5 @@ in
 
   # ── Build from source ──────────────────────────────────────────────────────
   buildSource = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
-    throw "torch/high-level.nix: buildSource is not yet implemented";
+    throw "triton/high-level.nix: buildSource is not yet implemented";
 }

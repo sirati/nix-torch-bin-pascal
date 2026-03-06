@@ -19,6 +19,7 @@ let
   makeTestApp = envPkg: name: {
     type    = "app";
     program = toString (pkgs.writeShellScript "run-tests-${name}" ''
+      export TRITON_LIBCUDA_PATH="/run/opengl-driver/lib"
       exec ${envPkg}/bin/python3 ${pkgs.writeText "test-torch.py" testScriptContent}
     '');
   };

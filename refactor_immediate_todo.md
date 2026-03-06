@@ -1,55 +1,19 @@
 # Immediate TODOs
 
-## Check run-tests.sh results (first thing tomorrow)
+## Current work: HLD Python package dependency resolution
 
-The screen session `nix-tests` was started at end of session.  It runs:
-  - Phase 1: bulk build of all 8 test packages (keep-going)
-  - Phase 2: individual rebuild of each package (for isolated error output)
-  - Phase 3: nix run for each app (runs test-torch.py inside the built env)
+From `refactor_impl.md`: packages like `einops`, `transformers` are hardcoded as `pkgs.python3Packages.<name>` in override files. Design and implement `pythonDeps` field on HLDs so concretise can resolve Python dependencies through the fixed-point scope before falling back to nixpkgs.
 
-Full log: `./run-tests.log`
+Key design points already documented in `refactor_impl.md`:
+- New `pythonDeps` field: list of string package names
+- Resolution order: (1) peer HLD in scope, (2) already-concretised HLD output, (3) `pkgs.python3Packages.<name>` fallback
+- Concretise injects `resolvedPythonDeps` attrset alongside `resolvedDeps`
+- Override files consume `resolvedPythonDeps` instead of hardcoding `pkgs.python3Packages.*`
+- Adding a new HLD for a formerly-nixpkgs package then auto-supersedes the fallback everywhere
 
-Check log:
-  screen -r nix-tests          # attach if still running
-  cat run-tests.log            # or just read the log
+## Other pending items (from human-todo-notes.md)
 
-### Likely failures to investigate
-
-- Source builds (flash-attn, mamba-ssm, causal-conv1d from source) were
-  building when the session ended — they may have completed or may have failed.
-  Check the SUMMARY table in run-tests.log for build/run status of each.
-
-- If any `nix run` step fails, check whether it is a runtime error (e.g.
-  pythonImportsCheck failure, wrong module name) or a GPU test failure (no
-  CUDA device on the build host).  Runtime-only GPU failures are expected on
-  a headless build machine; import-check failures need fixing.
-
-### Known issues already fixed this session
-
-- All upstream nixpkgs derivations for causal-conv1d, flash-attn, mamba-ssm
-  carry `meta.broken = true`.  Fixed by:
-    - `wheel-helpers.nix`: `broken = (overrideInfo.isBinBuildBroken or (_: false)) overrideInfo`
-    - `concretise/source-build-helpers.nix`: same with `isSourceBuildBroken`
-  Default is always `false`, overriding nixpkgs.  HLDs can set custom broken
-  predicates via new HLD fields `isBinBuildBroken` / `isSourceBuildBroken`
-  (both added to `pkgs/hld-type.nix` with `default = _: false`).
-
-## After verifying run-tests.sh results
-
-- Mark build/run checklist items below as done or record failures.
-- If any test is still failing, fix the root cause before moving on.
-
-## Build / runtime verification checklist
-
-- [ ] Binary wheel install: `test-causal-conv1d-py313-cu128`
-- [ ] Binary wheel install: `test-flash-attn-bin-py313-cu128`
-- [ ] Binary wheel install: `test-mamba-py313-cu128`
-- [ ] Source build: `test-causal-conv1d-from-source-py313-cu128`
-- [ ] Source build: `test-flash-attn-source-py313-cu128`
-- [ ] Source build: `test-mamba-source-py313-cu128`
-- [ ] Torch only: `test-torch-py313-cu128`
-- [ ] All-packages: `test-all-py313-cu128`
-
-## Next work item (after checklist is green)
-
-Next item from refactor_impl.md: HLD Python package dependency resolution.
+- Add test cases for CUDA 12.6 and CUDA 13.0
+- Derivation store paths should encode torch/cuda/pascal version + `-bin` suffix for wheel builds
+- Fix duplicate-package conflict when `extraPythonPackages` includes a package already in the HLD closure (einops conflict example in human-todo-notes.md)
+- `concretise` overlay/override hook: apply after HDLs are solved but before non-HLD python packages are resolved
