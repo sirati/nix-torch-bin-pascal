@@ -152,4 +152,4 @@ in
   # hld-type.nix validate fills them in automatically.
   inherit srcOwner srcRepo mkChangelog mkOverrideInfo;
 ```
-most HDLs contain all these variables that i believe do not need to be defined via let and then inherited. also 
+most HDLs contain all these variables that i believe do not need to be defined via let and then inherited. also mkChangelog should be the default for originType = "github-releases"; like this, and mkOverrideInfo should take the values for pname and nixpkgsAttr directly from the HDL in the default implementation.
