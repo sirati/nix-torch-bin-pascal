@@ -104,3 +104,13 @@ Last 5 log lines:
 > hint: `pkgs.nix-diff` can be used to compa
 ```
 so that means the code detecting such dublications does not work yet.
+
+
+
+it would be more appropirate for triton binary-hashes files to be named by and separated by the triton version not any.nix
+
+
+```
+TRITON_LIBCUDA_PATH = "/run/opengl-driver/lib";
+```
+I think its best to remove these, its unexpected that concretise makes such modifications, also if the fix has to always work 

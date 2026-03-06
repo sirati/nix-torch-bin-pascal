@@ -157,6 +157,22 @@ let
     allowBuildingFromSource = true;
   };
 
+  # ── Test: mamba-ssm-impure-local-autotune, Python 3.13, CUDA 12.8 ─────────
+  # Includes the autotune package which installs a .pth hook that sets
+  # TRITON_CACHE_DIR automatically on Python startup, and provides
+  # `python -m mamba_ssm_autotune` to pre-warm the triton kernel cache.
+  # mamba-ssm and its deps (torch, causal-conv1d) are pulled in transitively.
+  testMambaAutotuneResult = concretise {
+    inherit pkgs;
+    mlPackages = [
+      pytorchScope."mamba-ssm-impure-local-autotune"
+    ];
+    python                  = "3.13";
+    cuda                    = "12.8";
+    torch                   = "2.10";
+    allowBuildingFromSource = true;
+  };
+
 in
 {
   packages = {
@@ -170,6 +186,7 @@ in
     test-all-py313-cu128                       = testAllCu128Result.env;
     test-mamba-py313-cu128                     = testMambaCu128Result.env;
     test-mamba-source-py313-cu128              = testMambaSourceCu128Result.env;
+    test-mamba-autotune-py313-cu128            = testMambaAutotuneResult.env;
   };
 
   devShells = {
@@ -183,6 +200,7 @@ in
     test-all-py313-cu128                       = testAllCu128Result.devShell;
     test-mamba-py313-cu128                     = testMambaCu128Result.devShell;
     test-mamba-source-py313-cu128              = testMambaSourceCu128Result.devShell;
+    test-mamba-autotune-py313-cu128            = testMambaAutotuneResult.devShell;
   };
 
   apps = {
@@ -196,5 +214,11 @@ in
     test-all-py313-cu128                       = makeTestApp testAllCu128Result.env               "test-all-py313-cu128";
     test-mamba-py313-cu128                     = makeTestApp testMambaCu128Result.env             "test-mamba-py313-cu128";
     test-mamba-source-py313-cu128              = makeTestApp testMambaSourceCu128Result.env       "test-mamba-source-py313-cu128";
+    test-mamba-autotune-py313-cu128            = {
+      type    = "app";
+      program = toString (pkgs.writeShellScript "run-autotune-py313-cu128" ''
+        exec ${testMambaAutotuneResult.env}/bin/python3 -m mamba_ssm_autotune "$@"
+      '');
+    };
   };
 }
