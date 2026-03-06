@@ -75,7 +75,7 @@ in
     let
       binaryHashes = import (./binary-hashes + "/${cudaLabel}.nix");
       base = import ./overlay-common.nix {
-        inherit pkgs cudaPackages binaryHashes;
+        inherit pkgs cudaPackages cudaLabel binaryHashes;
         torchVersion = version;
         triton = resolvedDeps.triton;
       };
