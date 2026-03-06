@@ -32,7 +32,7 @@ let
   # omitted from the returned attrset; hld-type.nix validate fills them in
   # automatically.
   # Torch binaries are distributed via download.pytorch.org, not GitHub
-  # releases, so origin-type = "torch-website".  mkChangelog and mkOverrideInfo
+  # releases, so originType = "torch-website".  mkChangelog and mkOverrideInfo
   # are required for "torch-website" and must be provided explicitly here.
   # buildBin does not currently use them; they are available for future
   # buildSource use.
@@ -48,7 +48,7 @@ let
 in
 {
   # ── Origin type ────────────────────────────────────────────────────────────
-  "origin-type" = "torch-website";
+  originType = "torch-website";
 
   # ── Identity fields ────────────────────────────────────────────────────────
   # pname and nixpkgsAttr are omitted (both equal packageName "torch");

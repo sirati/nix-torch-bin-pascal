@@ -3,39 +3,15 @@ Shared runner logic for GitHub-release binary-wheel hash generators.
 
 Each package's ``generate-hashes.py`` is responsible only for:
 
-  - Package-specific constants (GITHUB_REPO, SCHEMA, DIMENSIONS, …).
-  - A ``parse_wheel(entry) -> (key, cxx11abi, path_dict, leaf) | None`` function.
-  - A thin ``main()`` that calls the helpers here.
-
-Typical package main()
-----------------------
-
-    from github_release_runner import (
-        strip_nix_shell_dashdash,
-        add_common_args,
-        resolve_tags,
-        collect_all_wheels,
-        write_missing_digests,
-        run_binary_hashes,
-    )
-
-    def main() -> None:
-        strip_nix_shell_dashdash()
-
-        p = argparse.ArgumentParser(...)
-        add_common_args(p)
-        # add package-specific flags here, e.g. --skip-source
-        args = p.parse_args()
-
-        tags, too_old_tags = resolve_tags(GITHUB_REPO, args)
-        all_raw, missing_tags = collect_all_wheels(GITHUB_REPO, tags, args.token, parse_wheel)
-        write_missing_digests(_HERE, missing_tags, too_old_tags)
-        organized = run_binary_hashes(
-            all_raw, OUTPUT_DIR, SCHEMA, DIMENSIONS, VERSION_SPEC, HEADER_TEMPLATE,
-        )
-        # optional post-step, e.g. source hashes:
-        # if not args.skip_source:
-        #     run_source_hashes(organized, tags, SOURCE_HASHES_DIR, OWNER, REPO)
+  - ``ORIGIN_TYPE = "github-releases"``
+  - ``GITHUB_REPO`` — ``"owner/repo"`` slug.
+  - Optionally ``WHEEL_RE`` — a compiled regex with the six required named
+    groups; defaults to the standard torch-compat pattern derived from the
+    package directory name via :func:`~wheel_parser.make_default_wheel_re`.
+  - Optionally ``WITH_SUBMODULES``, ``CUDA_VERSION_EXAMPLES``,
+    ``SCHEMA``, ``DIMENSIONS``, ``VERSION_SPEC``.
+  - No ``parse_wheel`` and no ``main``; the shared
+    :mod:`generate-hashes.main` entry point handles both.
 
 Sub-modules
 -----------
@@ -48,13 +24,23 @@ collector
 missing_digests
     :func:`write_missing_digests`
 runner
-    :func:`run_binary_hashes`
+    :func:`run_binary_hashes`, :func:`run_source_hashes`, :func:`run_all_hashes`
+wheel_parser
+    :func:`make_default_wheel_re`, :func:`build_parse_wheel`,
+    :data:`DEFAULT_SCHEMA`, :data:`DEFAULT_DIMENSIONS`, :data:`DEFAULT_VERSION_SPEC`
 """
 from github_release_runner.args import strip_nix_shell_dashdash, add_common_args
 from github_release_runner.tags import resolve_tags, winning_tag_for_base_versions
 from github_release_runner.collector import collect_all_wheels
 from github_release_runner.missing_digests import write_missing_digests
 from github_release_runner.runner import run_binary_hashes, run_source_hashes, run_all_hashes
+from github_release_runner.wheel_parser import (
+    make_default_wheel_re,
+    build_parse_wheel,
+    DEFAULT_SCHEMA,
+    DEFAULT_DIMENSIONS,
+    DEFAULT_VERSION_SPEC,
+)
 from source_fetcher import fetch_github_source_hashes_with_submodules_batch
 
 __all__ = [
@@ -67,5 +53,10 @@ __all__ = [
     "run_binary_hashes",
     "run_source_hashes",
     "run_all_hashes",
+    "make_default_wheel_re",
+    "build_parse_wheel",
+    "DEFAULT_SCHEMA",
+    "DEFAULT_DIMENSIONS",
+    "DEFAULT_VERSION_SPEC",
     "fetch_github_source_hashes_with_submodules_batch",
 ]

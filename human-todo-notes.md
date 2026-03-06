@@ -114,3 +114,12 @@ it would be more appropirate for triton binary-hashes files to be named by and s
 TRITON_LIBCUDA_PATH = "/run/opengl-driver/lib";
 ```
 I think its best to remove these, its unexpected that concretise makes such modifications, also if the fix has to always work 
+
+
+
+currently HDLs already specify their origin-type (rename to originType) and other data needed for the theit generate-hashes.py. the generate-hashes.py have a lot of common code, please refactor it so more code lives in generate-hashes.py, further we just refactored HLD (with help of flake.nix) to allow invoking e.g. nix run .#default.flash-attn.gen-hashes -- --tag v2.8.1
+As nearly every specific information needed in already in the HDL, please refactor this invokation method so that the available info in the HDL is used and not dublicated between the HDL and the generate-hashes.py. i.e. most common code needs to live in /generate-hashes/ the generate-hashes.py does not define its own main instead, it is imported by the main living in /generate-hashes/ this way allowing custom python code. the regex should be moved to the HDL.
+keep in mind that torch/triton and flash-attn/causal-conv1d/mamba-ssm work quite differently, so your refactor needs to keep this modularity. as before assume that for torch/triton we do not set defaults or we set the default conditionally on originType being github-releases vs torch-website.
+
+
+i have noticed calling generate-hashes will corrupt the missing-digests file, if called e.g. for a specific tag. missing-digests instead should be updated.

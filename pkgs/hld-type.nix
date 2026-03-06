@@ -14,15 +14,17 @@
 #                                 do not also set `default`
 #
 # Identity fields (pname, srcOwner, srcRepo, nixpkgsAttr, mkChangelog,
-# mkOverrideInfo, origin-type) are declared here and exposed on every validated
+# mkOverrideInfo, originType) are declared here and exposed on every validated
 # HLD so that override.nix / override-source.nix files never hardcode
 # package-specific strings.
 #
-# origin-type controls which defaults are applied:
+# originType controls which defaults are applied:
 #   "github-releases"  – mkChangelog defaults to hldHelpers."github-release-tag"
 #                        srcOwner srcRepo; mkOverrideInfo defaults to the
 #                        standard factory from hldHelpers.mkOverrideInfo
 #   "torch-website"    – mkChangelog and mkOverrideInfo are mandatory (no default)
+#
+# originType replaces the old hyphenated "origin-type" attribute name.
 #
 # pname defaults to packageName (the directory name) when omitted.
 # nixpkgsAttr defaults to packageName when omitted.
@@ -43,7 +45,7 @@
 #     };
 #   in
 #   {
-#     "origin-type"  = "github-releases";
+#     originType  = "github-releases";
 #     inherit srcOwner srcRepo mkChangelog mkOverrideInfo;
 #     highLevelDeps  = { inherit torch; };
 #     getVersions    = hldHelpers.getVersionsFromVersionFiles ./binary-hashes;
@@ -64,7 +66,7 @@
 let
   # ── hldHelpers import ─────────────────────────────────────────────────────
   # Needed to supply default implementations for mkChangelog / mkOverrideInfo
-  # when origin-type = "github-releases".
+  # when originType = "github-releases".
   hldHelpers = import ../concretise/hld-helpers.nix;
 
   # ── Field specification ───────────────────────────────────────────────────
@@ -78,7 +80,7 @@ let
 
     # ── Origin / identity ──────────────────────────────────────────────────
 
-    "origin-type" = {
+    originType = {
       description =
         ''string – origin type of the package; allowed values: ''
         + ''"torch-website", "github-releases"'';
@@ -109,18 +111,18 @@ let
     mkChangelog = {
       description =
         "function – version string → changelog URL; "
-        + "for origin-type=\"github-releases\" defaults to "
+        + "for originType=\"github-releases\" defaults to "
         + "hldHelpers.\"github-release-tag\" srcOwner srcRepo; "
-        + "required for origin-type=\"torch-website\"";
+        + "required for originType=\"torch-website\"";
       conditionalDefault = true;
     };
 
     mkOverrideInfo = {
       description =
         "function – { pkgs, cudaPackages, version, resolvedDeps } → overrideInfo "
-        + "attrset; for origin-type=\"github-releases\" defaults to the standard "
+        + "attrset; for originType=\"github-releases\" defaults to the standard "
         + "factory from hldHelpers.mkOverrideInfo; required for "
-        + "origin-type=\"torch-website\"";
+        + "originType=\"torch-website\"";
       conditionalDefault = true;
     };
 
@@ -182,6 +184,17 @@ let
       description = "attrset – arbitrary package-specific metadata";
       default     = {};
     };
+
+    generateHashesScript = {
+      description =
+        "path – path to the generate-hashes.py script for this package; "
+        + "when non-null the flake exposes a gen-hashes app at "
+        + "apps.<system>.<packageName>.gen-hashes that runs the script "
+        + "with the required tools on PATH.  Defaults to "
+        + "pkgs/<packageName>/generate-hashes.py if that file exists, "
+        + "otherwise null (no app exposed).";
+      dynamicDefault = true;
+    };
   };
 
   # ── Derived field lists ───────────────────────────────────────────────────
@@ -191,7 +204,7 @@ let
   # A field is required (must be supplied by the HLD file) when it has none of:
   #   • a static `default`
   #   • dynamicDefault = true  (computed from packageName at validate time)
-  #   • conditionalDefault = true  (computed from origin-type at validate time)
+  #   • conditionalDefault = true  (computed from originType at validate time)
   requiredFieldNames = builtins.filter
     (name:
       let spec = fieldSpecs.${name};
@@ -210,13 +223,13 @@ let
   # returned directly by a high-level.nix file.  Performs:
   #   1. Checks that all required fields are present.
   #   2. Checks that no fields outside fieldSpecs are present.
-  #   3. Validates the value of origin-type.
+  #   3. Validates the value of originType.
   #   4. Fills in defaults for optional fields:
   #        – static defaults (canBuildBin, versionConstraints, data) via
   #          appliedDefaults
   #        – dynamic defaults (pname, nixpkgsAttr) computed from packageName
   #        – conditional defaults (mkChangelog, mkOverrideInfo) computed from
-  #          origin-type; throws when origin-type = "torch-website" and these
+  #          originType; throws when originType = "torch-website" and these
   #          fields are absent
   #   5. Stamps the result with _isHighLevelDerivation = true and
   #      packageName = packageName.
@@ -250,13 +263,13 @@ let
           + builtins.concatStringsSep ", " allFieldNames
         );
 
-      # ── origin-type validation ─────────────────────────────────────────
+      # ── originType validation ──────────────────────────────────────────
       _checkOriginType =
-        let ot = attrs."origin-type";
+        let ot = attrs.originType;
         in
         (ot == "github-releases" || ot == "torch-website")
         || throw (
-          "HLD '${packageName}': origin-type must be "
+          "HLD '${packageName}': originType must be "
           + "\"github-releases\" or \"torch-website\", got \"${ot}\""
         );
 
@@ -264,21 +277,28 @@ let
       resolvedPname       = attrs.pname       or packageName;
       resolvedNixpkgsAttr = attrs.nixpkgsAttr or packageName;
 
-      # ── Conditional defaults (depend on origin-type) ───────────────────
+      resolvedGenerateHashesScript =
+        if builtins.hasAttr "generateHashesScript" attrs
+        then attrs.generateHashesScript
+        else
+          let scriptPath = ./. + "/${packageName}/generate-hashes.py";
+          in if builtins.pathExists scriptPath then scriptPath else null;
+
+      # ── Conditional defaults (depend on originType) ────────────────────
       resolvedMkChangelog =
         if builtins.hasAttr "mkChangelog" attrs
         then attrs.mkChangelog
-        else if attrs."origin-type" == "github-releases"
+        else if attrs.originType == "github-releases"
         then hldHelpers."github-release-tag" attrs.srcOwner attrs.srcRepo
         else throw (
           "HLD '${packageName}': mkChangelog is required when "
-          + "origin-type = \"torch-website\""
+          + "originType = \"torch-website\""
         );
 
       resolvedMkOverrideInfo =
         if builtins.hasAttr "mkOverrideInfo" attrs
         then attrs.mkOverrideInfo
-        else if attrs."origin-type" == "github-releases"
+        else if attrs.originType == "github-releases"
         then hldHelpers.mkOverrideInfo {
           pname               = resolvedPname;
           nixpkgsAttr         = resolvedNixpkgsAttr;
@@ -294,7 +314,7 @@ let
         }
         else throw (
           "HLD '${packageName}': mkOverrideInfo is required when "
-          + "origin-type = \"torch-website\""
+          + "originType = \"torch-website\""
         );
 
       # ── Static defaults ────────────────────────────────────────────────
@@ -314,10 +334,11 @@ let
       # These always override whatever was in attrs (they resolve to the HLD-
       # provided value when present, or to the computed default otherwise).
       computedFields = {
-        pname          = resolvedPname;
-        nixpkgsAttr    = resolvedNixpkgsAttr;
-        mkChangelog    = resolvedMkChangelog;
-        mkOverrideInfo = resolvedMkOverrideInfo;
+        pname                = resolvedPname;
+        nixpkgsAttr          = resolvedNixpkgsAttr;
+        mkChangelog          = resolvedMkChangelog;
+        mkOverrideInfo       = resolvedMkOverrideInfo;
+        generateHashesScript = resolvedGenerateHashesScript;
       };
     in
     assert _checkMissing;

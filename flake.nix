@@ -34,6 +34,24 @@
           # ── Dev shell for this project (Nix tooling) ────────────────────────
           develop = developModule { inherit pkgs; };
 
+          # ── gen-hashes apps — one per HLD that declares generateHashesScript ─
+          # Exposed under apps.<system>.default.<pkgName>.gen-hashes so that:
+          #   nix run .#default.flash-attn.gen-hashes -- --tag v2.8.1
+          # apps.default is a plain namespace attrset; gen-hashes carries type/program.
+          genHashesLib = import ./generate-hashes/lib.nix { inherit pkgs; };
+          genHashesSubApps =
+            builtins.listToAttrs (
+              builtins.concatLists (
+                map (name:
+                  let hld = pytorchScope.${name};
+                  in
+                  if hld.generateHashesScript != null
+                  then [{ inherit name; value = { gen-hashes = genHashesLib.makeGenHashesApp hld; }; }]
+                  else []
+                ) (builtins.attrNames pytorchScope)
+              )
+            );
+
         in
         {
           packages  = tests.packages;
@@ -48,7 +66,9 @@
             };
           };
 
-          apps = tests.apps;
+          apps = tests.apps // {
+            default = genHashesSubApps;
+          };
         }
       );
 

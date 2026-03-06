@@ -1,4 +1,4 @@
-# Shared Nix utilities for binary-wheel override files.
+# Shared Nix utilities for binary-wheel override files and hash generation apps.
 #
 # Provides platform detection and major.minor version comparison helpers
 # that are common to every package-specific override.nix.
@@ -81,5 +81,45 @@ in {
   versionEQ = a: b:
     let pa = _parseMajorMinor a; pb = _parseMajorMinor b;
     in pa.maj == pb.maj && pa.min == pb.min;
+
+  # ── Hash generation app builder ───────────────────────────────────────────
+  #
+  # makeGenHashesApp hld
+  #
+  # Builds a flake app ({ type = "app"; program = ...; }) that runs the
+  # package's generate-hashes.py with the required tools (python3, git,
+  # nix-prefetch-github) on PATH.
+  #
+  # The script is executed from $PWD, which must be the project root (the
+  # directory containing flake.nix and the pkgs/ tree).  This matches the
+  # normal usage of `nix run .#<pkg>.gen-hashes` from the project root.
+  #
+  # The shared main (generate-hashes/main.py) is the single entry point for
+  # all packages.  It loads the per-package generate-hashes.py as a
+  # configuration module via --pkg-module and dispatches based on
+  # ORIGIN_TYPE ("github-releases" or "torch-website").
+  #
+  # Usage in flake.nix:
+  #   genHashesLib = import ./generate-hashes/lib.nix { inherit pkgs; };
+  #   apps.x86_64-linux."flash-attn".gen-hashes =
+  #     genHashesLib.makeGenHashesApp pytorchScope."flash-attn";
+  makeGenHashesApp = hld:
+    let
+      name       = hld.packageName;
+      originType = hld.originType;
+      githubRepo = hld.srcOwner + "/" + hld.srcRepo;
+      pkgModulePath = "pkgs/${name}/generate-hashes.py";
+      deps = [ pkgs.python3 pkgs.git pkgs.nix-prefetch-github ];
+      wrapperScript = pkgs.writeShellScript "gen-hashes-${name}" ''
+        export PATH="${lib.makeBinPath deps}:$PATH"
+        exec env PYTHONPATH="$PWD/generate-hashes" \
+          python3 "$PWD/generate-hashes/main.py" \
+            --pkg-module "$PWD/${pkgModulePath}" \
+            --origin-type "${originType}" \
+            --github-repo "${githubRepo}" \
+            "$@"
+      '';
+    in
+    { type = "app"; program = toString wrapperScript; };
 
 }

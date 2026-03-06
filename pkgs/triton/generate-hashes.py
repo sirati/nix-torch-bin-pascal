@@ -1,24 +1,24 @@
-#!/usr/bin/env nix-shell
-#!nix-shell -i python3 -p python3 nix
-
 """
-Generate triton/binary-hashes/any.nix from the PyTorch wheel index.
+triton generate-hashes configuration module.
 
-Triton wheels are CUDA-agnostic (same wheel for all CUDA versions — they
-JIT-compile kernels at runtime).  A single any.nix file is generated;
-the getVersionsFromCudaFiles helper falls back to any.nix when no
-CUDA-label-specific file exists in the binary-hashes/ directory.
+Imported by the shared entry point ``generate-hashes/main.py``.
+Do NOT add a main() here.
 
-Run from the project root:
-  nix-shell pkgs/triton/generate-hashes.py
+Invocation (from project root):
+  nix run .#default.triton.gen-hashes
+
+Options: none — all triton variants are always regenerated together.
 """
 
 import os
 import re
 import sys
 
-# Make the shared generate-hashes modules importable.
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../..", "generate-hashes"))
+# When loaded as a module by main.py, generate-hashes/ is already on sys.path.
+# When run directly for debugging, add it manually.
+_GENERATE_HASHES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../..", "generate-hashes")
+if _GENERATE_HASHES_DIR not in sys.path:
+    sys.path.insert(0, _GENERATE_HASHES_DIR)
 
 from common import (
     deduplicate_post_versions,
@@ -28,6 +28,8 @@ from common import (
 )
 from nix_writer import DimSpec, organize_wheels, write_binary_hashes_nix
 from source_triton import TritonWheelSource
+
+# ORIGIN_TYPE ("torch-website") is injected by makeGenHashesApp from the HLD.
 
 # ---------------------------------------------------------------------------
 # Output configuration
@@ -39,7 +41,7 @@ OUTPUT_PATH = os.path.join(OUTPUT_DIR, "any.nix")
 HEADER = """\
 # WARNING: Auto-generated file. Do not edit manually!
 # Source:  https://download.pytorch.org/whl/triton/
-# To regenerate: nix-shell pkgs/triton/generate-hashes.py
+# To regenerate: nix run .#default.triton.gen-hashes
 #
 # Triton wheels are CUDA-agnostic; a single any.nix is used for all CUDA
 # versions.  getVersionsFromCudaFiles falls back to any.nix automatically.
@@ -71,7 +73,7 @@ def _triton_major_version(version: str) -> int:
         return 0
 
 
-def parse_wheel(entry) -> dict | None:
+def _parse_wheel(entry) -> dict | None:
     """
     Map a TritonWheelSource entry to the path dict used for nesting.
 
@@ -85,8 +87,8 @@ def parse_wheel(entry) -> dict | None:
         r"^triton-"
         r"(\d+\.\d+\.\d+(?:\.post\d+)?)"  # group 1: version
         r"-(cp\d+t?)"                      # group 2: abi tag
-        r"-cp\d+t?"                         # abi tag repeated (ignored)
-        r"-([\w]+(?:\.[\w]+)*)"             # group 3: platform tag (may contain dots)
+        r"-cp\d+t?"                        # abi tag repeated (ignored)
+        r"-([\w]+(?:\.[\w]+)*)"            # group 3: platform tag (may contain dots)
         r"\.whl$",
         entry.name,
     )
@@ -95,7 +97,7 @@ def parse_wheel(entry) -> dict | None:
 
     version, abitag, platform = m.groups()
 
-    # Platform tag may be compound like "manylinux_2_27_x86_64.manylinux_2_28_x86_64"
+    # Platform tag may be compound like "manylinux_2_27_x86_64.manylinux_2_28_x86_64".
     # Take the first parseable segment.
     os_arch = None
     for p in platform.split("."):
@@ -118,14 +120,14 @@ def parse_wheel(entry) -> dict | None:
 # Generation
 # ---------------------------------------------------------------------------
 
-def generate() -> None:
+def _generate() -> None:
     print("Fetching triton wheel index …")
     source = TritonWheelSource(min_major=3)
 
     entries = []
     skipped = 0
     for entry in source.fetch_wheels():
-        path = parse_wheel(entry)
+        path = _parse_wheel(entry)
         if path is None:
             print(f"  SKIP  {entry.name}", file=sys.stderr)
             skipped += 1
@@ -135,7 +137,6 @@ def generate() -> None:
     if skipped:
         print(f"  ({skipped} wheel(s) skipped due to unrecognised format)")
 
-    # Keep only triton >= 3
     before_filter = len(entries)
     entries = [
         (p, e) for p, e in entries
@@ -145,7 +146,6 @@ def generate() -> None:
     if dropped:
         print(f"  ({dropped} wheel(s) dropped for triton < 3)")
 
-    # Deduplicate .postN releases
     entries = deduplicate_post_versions(entries)
 
     if not entries:
@@ -166,8 +166,9 @@ def generate() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Main
+# run() — called by the shared main for torch-website packages
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
-    generate()
+def run() -> None:
+    """Entry point called by ``generate-hashes/main.py`` for torch-website packages."""
+    _generate()

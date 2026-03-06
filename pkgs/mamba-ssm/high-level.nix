@@ -52,7 +52,7 @@ let
 in
 {
   # ── Origin type ────────────────────────────────────────────────────────────
-  "origin-type" = "github-releases";
+  originType = "github-releases";
 
   # ── Identity fields ────────────────────────────────────────────────────────
   # pname and nixpkgsAttr are omitted here (both equal packageName);

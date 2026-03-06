@@ -66,6 +66,8 @@ Both helpers unpack `overrideInfo` fields (`pkgs`, `cudaPackages`, `pname`, `src
 
 Binary wheel hashes: `pkgs/<pkg>/binary-hashes/`.  Source hashes: `pkgs/<pkg>/source-hashes/`.  Each package has its own `generate-hashes.py` entry point.
 
+`generateHashesScript` is an optional HLD field (dynamic default: auto-detects `pkgs/<packageName>/generate-hashes.py` via `builtins.pathExists`; resolves to the store path if found, `null` otherwise).  HLDs never need to declare it explicitly.  `flake.nix` iterates `pytorchScope`, and for every HLD with a non-null `generateHashesScript` exposes a flake app at `apps.<system>.<packageName>.gen-hashes` built by `generate-hashes/lib.nix`'s `makeGenHashesApp`.  The wrapper adds `python3`, `git`, `nix-prefetch-github` to `PATH` and sets `PYTHONPATH=$PWD/generate-hashes` before exec-ing the script; `$PWD` must be the project root.  Usage: `nix run .#flash-attn.gen-hashes -- --tag v2.8.1`.
+
 `binary-hashes/` layout variants:
 - **Per-CUDA-label** (`{cudaLabel}.nix`, e.g. `cu128.nix`): used by torch where wheels differ per CUDA version.
 - **CUDA-agnostic** (`any.nix`): used by triton and any future package whose wheels are identical across all CUDA versions.  `getVersionsFromCudaFiles` tries `{cudaLabel}.nix` first; if absent it falls back to `any.nix`.  The file carries `_cudaLabel = "*"` as a self-documenting sentinel.  All underscore-prefixed keys are filtered out during version enumeration.

@@ -110,6 +110,8 @@ def make_torch_binary_header_template(
         ``header_template`` argument of :func:`~nix_writer.write_binary_hashes_per_version`.
     """
     flags = "--skip-source --tag" if has_source_hashes else "--tag"
+    pkg_name = pkg_path.split("/")[-1]
+    # Apps live under apps.<system>.default.<pkgName>.gen-hashes in the flake.
     cuda_note = (
         f"CUDA major[minor] the wheel was compiled against "
         f"(e.g. {cuda_version_examples})."
@@ -117,7 +119,7 @@ def make_torch_binary_header_template(
     return "\n".join([
         "# WARNING: Auto-generated file. Do not edit manually!",
         f"# Source:  https://github.com/{github_repo}/releases",
-        f"# To regenerate: nix-shell {pkg_path}/generate-hashes.py [-- {flags} v{{version}}]",
+        f"# To regenerate: nix run .#default.{pkg_name}.gen-hashes [-- {flags} v{{version}}]",
         "#",
         "# Structure: cudaVersion -> torchCompat -> pyVer -> os -> arch",
         "#",

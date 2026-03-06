@@ -1,13 +1,16 @@
-#!/usr/bin/env nix-shell
-#!nix-shell -i python3 -p python3 nix
-
 """
-Generate torch/binary-hashes/cu{variant}.nix from the PyTorch wheel index.
+torch generate-hashes configuration module.
 
-Run from the project root:
-  nix-shell torch/generate-hashes.py                  # generate all variants
-  nix-shell torch/generate-hashes.py -- --cuda cu126  # only CUDA 12.6
-  nix-shell torch/generate-hashes.py -- --cuda cu128  # only CUDA 12.8
+Imported by the shared entry point ``generate-hashes/main.py``.
+Do NOT add a main() here.
+
+Invocation (from project root):
+  nix run .#default.torch.gen-hashes [-- --cuda cu126]
+  nix run .#default.torch.gen-hashes [-- --cuda cu128]
+
+Options (handled by run() below):
+  --cuda VARIANT   CUDA variant to generate (e.g. cu126, cu128).
+                   May be repeated. Defaults to all variants.
 """
 
 import argparse
@@ -15,8 +18,11 @@ import os
 import re
 import sys
 
-# Make the shared generate-hashes modules importable.
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../..", "generate-hashes"))
+# When loaded as a module by main.py, generate-hashes/ is already on sys.path.
+# When run directly for debugging, add it manually.
+_GENERATE_HASHES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../..", "generate-hashes")
+if _GENERATE_HASHES_DIR not in sys.path:
+    sys.path.insert(0, _GENERATE_HASHES_DIR)
 
 from common import (
     deduplicate_post_versions,
@@ -26,6 +32,8 @@ from common import (
 )
 from nix_writer import DimSpec, organize_wheels, write_binary_hashes_nix
 from source_torch import TorchWheelSource
+
+# ORIGIN_TYPE ("torch-website") is injected by makeGenHashesApp from the HLD.
 
 # ---------------------------------------------------------------------------
 # Per-variant configuration
@@ -43,19 +51,16 @@ VARIANTS = {
     },
 }
 
-# No pre-filter: fetch all versions from the index.  We filter for torch >= 2
-# in Python and let TorchWheelSource use its default pattern (which now also
-# matches .postN suffixes).  Post-release deduplication is handled below.
 VERSION_FILTER = None
 
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "binary-hashes")
 
 
-def make_header(cuda_variant: str, source_url: str) -> str:
+def _make_header(cuda_variant: str, source_url: str) -> str:
     return f"""\
 # WARNING: Auto-generated file. Do not edit manually!
 # Source:  {source_url}
-# To regenerate: nix-shell torch/generate-hashes.py [-- --cuda {cuda_variant}]
+# To regenerate: nix run .#default.torch.gen-hashes [-- --cuda {cuda_variant}]
 #
 # Structure: version -> pythonVersion -> os -> arch
 #   pythonVersion: py310, py311, py312, py313, py313-freethreaded, py314, py314-freethreaded
@@ -78,14 +83,13 @@ DIMENSIONS = ["version", "pyVer", "os", "arch"]
 # ---------------------------------------------------------------------------
 
 def _torch_major_version(version: str) -> int:
-    """Return the major version integer for a torch version string."""
     try:
         return int(version.split(".")[0])
     except (ValueError, IndexError):
         return 0
 
 
-def parse_wheel(entry) -> dict | None:
+def _parse_wheel(entry) -> dict | None:
     """
     Map a TorchWheelSource entry to the path dict used for nesting.
 
@@ -99,9 +103,9 @@ def parse_wheel(entry) -> dict | None:
     m = re.match(
         r"^torch-"
         r"(\d+\.\d+\.\d+(?:\.post\d+)?)"  # group 1: version (optional .postN)
-        r"-(cp\d+t?)"              # group 2: abi tag, e.g. cp312 or cp313t
-        r"-cp\d+t?"                # abi tag repeated (ignored)
-        r"-([\w]+(?:_[\w]+)*)"     # group 3: platform tag
+        r"-(cp\d+t?)"                      # group 2: abi tag, e.g. cp312 or cp313t
+        r"-cp\d+t?"                        # abi tag repeated (ignored)
+        r"-([\w]+(?:_[\w]+)*)"             # group 3: platform tag
         r"\.whl$",
         entry.name,
     )
@@ -116,7 +120,7 @@ def parse_wheel(entry) -> dict | None:
     os_name, arch = os_arch
 
     is_ft  = abitag.endswith("t")
-    pynum  = abitag[2:].rstrip("t")              # "cp312" → "312", "cp313t" → "313"
+    pynum  = abitag[2:].rstrip("t")
     py_key = f"py{pynum}-freethreaded" if is_ft else f"py{pynum}"
 
     return {"version": version, "pyVer": py_key, "os": os_name, "arch": arch}
@@ -126,7 +130,7 @@ def parse_wheel(entry) -> dict | None:
 # Per-variant generation
 # ---------------------------------------------------------------------------
 
-def generate_variant(cuda_variant: str) -> None:
+def _generate_variant(cuda_variant: str) -> None:
     cfg = VARIANTS[cuda_variant]
     output_path = os.path.join(OUTPUT_DIR, f"{cuda_variant}.nix")
 
@@ -136,7 +140,7 @@ def generate_variant(cuda_variant: str) -> None:
     entries = []
     skipped = 0
     for entry in source.fetch_wheels():
-        path = parse_wheel(entry)
+        path = _parse_wheel(entry)
         if path is None:
             print(f"  SKIP  {entry.name}", file=sys.stderr)
             skipped += 1
@@ -146,8 +150,6 @@ def generate_variant(cuda_variant: str) -> None:
     if skipped:
         print(f"  ({skipped} wheel(s) skipped due to unrecognised format)")
 
-    # Keep only torch >= 2 (drop any ancient 1.x wheels that may appear in
-    # the index).
     before_filter = len(entries)
     entries = [
         (p, e) for p, e in entries
@@ -157,13 +159,13 @@ def generate_variant(cuda_variant: str) -> None:
     if dropped:
         print(f"  ({dropped} wheel(s) dropped for torch < 2)")
 
-    # Deduplicate .postN releases: for each (base_version, pyVer, os, arch)
-    # tuple keep only the wheel with the highest post number and relabel its
-    # version key to the bare base version.
     entries = deduplicate_post_versions(entries)
 
     if not entries:
-        print(f"No wheels matched for {cuda_variant} — index may be empty or unreachable.", file=sys.stderr)
+        print(
+            f"No wheels matched for {cuda_variant} — index may be empty or unreachable.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     organized = organize_wheels(entries, DIMENSIONS)
@@ -171,17 +173,18 @@ def generate_variant(cuda_variant: str) -> None:
         output_path,
         organized,
         SCHEMA,
-        make_header(cuda_variant, cfg["source_url"]),
+        _make_header(cuda_variant, cfg["source_url"]),
         wrap_in_func=False,
         prefix_attrs={"_cudaLabel": cuda_variant},
     )
 
 
 # ---------------------------------------------------------------------------
-# Main
+# run() — called by the shared main for torch-website packages
 # ---------------------------------------------------------------------------
 
-def main() -> None:
+def run() -> None:
+    """Entry point called by ``generate-hashes/main.py`` for torch-website packages."""
     parser = argparse.ArgumentParser(
         description="Generate torch binary-hashes .nix files from the PyTorch wheel index."
     )
@@ -202,8 +205,4 @@ def main() -> None:
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     for variant in variants:
-        generate_variant(variant)
-
-
-if __name__ == "__main__":
-    main()
+        _generate_variant(variant)
