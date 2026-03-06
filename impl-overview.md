@@ -30,6 +30,19 @@ When `cudaAgnostic = true` (set on triton) the store-path stamp omits the cuda, 
 
 See [`pkgs/torch/high-level.nix`](pkgs/torch/high-level.nix), [`pkgs/triton/high-level.nix`](pkgs/triton/high-level.nix), [`pkgs/flash-attn/high-level.nix`](pkgs/flash-attn/high-level.nix), [`pkgs/causal-conv1d/high-level.nix`](pkgs/causal-conv1d/high-level.nix), [`pkgs/mamba-ssm/high-level.nix`](pkgs/mamba-ssm/high-level.nix).
 
+## cudaPackages overrides
+
+`pkgs/torch/` contains two `cudaPackages.overrideScope` helpers that are applied in `concretise/default.nix` before any package is built:
+
+**[`pkgs/torch/cuda-packages-cudnn-fix.nix`](pkgs/torch/cuda-packages-cudnn-fix.nix)** — applied for `cu126` and `cu130`.  torch 2.10.0 wheels for those CUDA labels were compiled against cuDNN 9.15.1, while nixpkgs ships 9.13.0 for all package sets.  Reads `pkgs/torch/manifests/{cudaLabel}/cudnn/redistrib_9.15.1.json` and uses `prev.cudnn.overrideAttrs` to substitute the correct version.  `cudaVariant` is `"cuda13"` for cu130, `"cuda12"` for all others.
+
+**[`pkgs/torch/cuda-packages-pascal.nix`](pkgs/torch/cuda-packages-pascal.nix)** — applied when `pascal = true`.  Overrides `cudnn` to 9.10.2 (last version supporting Pascal SM 6.x) and `libcutensor` to 2.1.0, reading from `pkgs/torch/manifests/{cudaLabel}/`.
+
+The override chain in `concretise/default.nix`:
+`baseCudaPackages` → `cudaPackagesWithCudnn` (cuDNN fix, cu126/cu130 only) → `cudaPackages` (pascal scope, pascal=true only).
+
+Manifests are plain NVIDIA redistrib JSON files stored under `pkgs/torch/manifests/{cudaLabel}/{component}/redistrib_{version}.json`.  Currently cu126 and cu128 have cudnn 9.10.2 / 9.11.1; cu126 and cu130 have cudnn 9.15.1.
+
 ## Concretisation
 
 [`concretise/default.nix`](concretise/default.nix) — single attrset argument: `{ pkgs, mlPackages, python, cuda, torch, pascal?, allowBuildingFromSource, extraPythonPackages?, pythonPackageOverrides? }`.  Returns `{ env, devShell, python, packages, extendEnv }`.
@@ -39,7 +52,7 @@ See [`pkgs/torch/high-level.nix`](pkgs/torch/high-level.nix), [`pkgs/triton/high
 Supported CUDA versions: `"12.6"`, `"12.8"`, `"13.0"`.
 
 Steps:
-1. Validate inputs; resolve `cudaPackages`, `basePython` (with `pythonPackageOverrides` applied), `cudaLabel`.
+1. Validate inputs; resolve `cudaPackages` (with cuDNN fix and optional pascal overrides applied), `basePython` (with `pythonPackageOverrides` applied), `cudaLabel`.
 2. Collect all transitive HLDs via `highLevelDeps`; topological sort (cycle detection included).
 3. Merge `versionConstraints` from all HLDs (stricter bound wins).
 4. Pre-resolve versions in dependency order so `canBuildBin` can inspect sibling versions.

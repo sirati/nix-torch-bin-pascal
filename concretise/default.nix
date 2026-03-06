@@ -220,13 +220,26 @@ let
     else if cudaLabel == "cu128" then pkgs.cudaPackages_12_8
     else                              pkgs.cudaPackages_13_0;
 
+  # torch 2.10.0 wheels for cu126/cu130 were compiled against cuDNN 9.15.1,
+  # while nixpkgs currently ships 9.13.0 for all CUDA package sets.
+  # Upgrade cuDNN to 9.15.1 for those labels so that autoPatchelfHook wires
+  # the correct version into every package built in this concretise call.
+  cudaPackagesWithCudnn =
+    if cudaLabel == "cu126" || cudaLabel == "cu130" then
+      import ../pkgs/torch/cuda-packages-cudnn-fix.nix {
+        inherit pkgs cudaLabel;
+        cudaPackages = baseCudaPackages;
+      }
+    else
+      baseCudaPackages;
+
   cudaPackages =
     if !pascal then
-      baseCudaPackages
+      cudaPackagesWithCudnn
     else
       import ../pkgs/torch/cuda-packages-pascal.nix {
         inherit pkgs cudaLabel;
-        cudaPackages = baseCudaPackages;
+        cudaPackages = cudaPackagesWithCudnn;
       };
 
   # ── Retry wrappers (currently disabled) ───────────────────────────────────

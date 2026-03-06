@@ -1,0 +1,62 @@
+{
+  "release_date": "2025-11-12",
+  "release_label": "9.15.1",
+  "release_product": "cudnn",
+  "cudnn": {
+    "name": "NVIDIA CUDA Deep Neural Network library",
+    "license": "cudnn",
+    "license_path": "cudnn/LICENSE.txt",
+    "version": "9.15.1.9",
+    "cuda_variant": ["12", "13"],
+    "linux-x86_64": {
+      "cuda12": {
+        "relative_path": "cudnn/linux-x86_64/cudnn-linux-x86_64-9.15.1.9_cuda12-archive.tar.xz",
+        "sha256": "4bd08d37ef761af423714adfd1d8107bdd2581a55136f8d70d15560f7330b194",
+        "md5": "49c01485482aaf0147608bc8410febe2",
+        "size": "877953916"
+      },
+      "cuda13": {
+        "relative_path": "cudnn/linux-x86_64/cudnn-linux-x86_64-9.15.1.9_cuda13-archive.tar.xz",
+        "sha256": "cb3434657f66dd548ee71b5646a7451b3a4be197caecbebae8c18f8ffba22666",
+        "md5": "adb646f6e09533bed79b1b6a67f33f20",
+        "size": "646569604"
+      }
+    },
+    "linux-aarch64": {
+      "cuda12": {
+        "relative_path": "cudnn/linux-aarch64/cudnn-linux-aarch64-9.15.1.9_cuda12-archive.tar.xz",
+        "sha256": "8e2d4f277e05d97da20475c034f280dc9ab08b9d03f0d14201fe08c43b043c0a",
+        "md5": "ec59718fb7e88878f9cbdd1b5923c716",
+        "size": "938338364"
+      }
+    },
+    "linux-sbsa": {
+      "cuda12": {
+        "relative_path": "cudnn/linux-sbsa/cudnn-linux-sbsa-9.15.1.9_cuda12-archive.tar.xz",
+        "sha256": "7301d4c76d016350b86747907e45228354fe6939e317ead501420e3db04b9e6b",
+        "md5": "1765e8e2650d92ddbb0550aa6d0ec1b9",
+        "size": "872605812"
+      },
+      "cuda13": {
+        "relative_path": "cudnn/linux-sbsa/cudnn-linux-sbsa-9.15.1.9_cuda13-archive.tar.xz",
+        "sha256": "4e8bcd859105d4b9749a16c88cfbe177611e60ae88cd0d0ed04412ccb9822897",
+        "md5": "a6356eb44b1cb13c9d6503c310b98225",
+        "size": "774001728"
+      }
+    },
+    "windows-x86_64": {
+      "cuda12": {
+        "relative_path": "cudnn/windows-x86_64/cudnn-windows-x86_64-9.15.1.9_cuda12-archive.zip",
+        "sha256": "e0ea86c19958b7011b296dab0ff57bfd31e9376bd7dc4f50108c591baf3e4c38",
+        "md5": "3a392af2bbfb0624afcd3e93fde7b7f4",
+        "size": "625197473"
+      },
+      "cuda13": {
+        "relative_path": "cudnn/windows-x86_64/cudnn-windows-x86_64-9.15.1.9_cuda13-archive.zip",
+        "sha256": "2a5d0b6dbde011f406b501fa66eecab7dd84543c499cd4b4a1599ce680b4911d",
+        "md5": "3b976ac200991a1dd093c4b63554bbfc",
+        "size": "335370987"
+      }
+    }
+  }
+}
