@@ -15,7 +15,7 @@
 #
 # Identity fields (pname, srcOwner, srcRepo, nixpkgsAttr, mkChangelog,
 # mkOverlayInfo, originType) are declared here and exposed on every validated
-# HLD so that overlay.nix / overlay-source.nix files never hardcode
+# HLD so that overlay-bin.nix / overlay-source.nix files never hardcode
 # package-specific strings.
 #
 # originType controls which defaults are applied:
@@ -35,23 +35,16 @@
 #
 #   assert hldHelpers.isHLD torch;
 #
-#   let
-#     srcOwner     = "MyOrg";
-#     srcRepo      = "my-pkg";
-#     mkChangelog  = hldHelpers."github-release-tag" srcOwner srcRepo;
-#     mkOverlayInfo = hldHelpers.mkOverlayInfo {
-#       pname = packageName;  nixpkgsAttr = packageName;
-#       inherit srcOwner srcRepo mkChangelog;
-#     };
-#   in
 #   {
 #     originType  = "github-releases";
-#     inherit srcOwner srcRepo mkChangelog mkOverlayInfo;
+#     srcOwner    = "MyOrg";
+#     srcRepo     = "my-pkg";
+#     # mkChangelog and mkOverlayInfo are auto-derived for "github-releases".
 #     highLevelDeps  = { inherit torch; };
 #     getVersions    = hldHelpers.getVersionsFromVersionFiles ./binary-hashes;
-#     buildBin       = { pkgs, cudaPackages, cudaLabel,
+#     buildBin       = { mkOverlayInfo, pkgs, cudaPackages, cudaLabel,
 #                        resolvedDeps, version, wrappers ? null }:
-#                      import ./overlay.nix {
+#                      import ./overlay-bin.nix {
 #                        overlayInfo = mkOverlayInfo
 #                          { inherit pkgs cudaPackages version resolvedDeps; };
 #                      };

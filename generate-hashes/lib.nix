@@ -1,7 +1,7 @@
 # Shared Nix utilities for binary-wheel overlay files and hash generation apps.
 #
 # Provides platform detection and major.minor version comparison helpers
-# that are common to every package-specific overlay.nix.
+# that are common to every package-specific overlay-bin.nix.
 #
 # Usage
 # -----

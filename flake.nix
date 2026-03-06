@@ -1,5 +1,5 @@
 {
-  description = "PyTorch and related binary packages with CUDA 12.6/12.8/13.0 support (regular and Pascal variants)";
+  description = "PyTorch and related binary packages with CUDA 12.6/12.8/13.0 support";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";

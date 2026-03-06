@@ -28,10 +28,3 @@ Verify that the generated .nix files are identical to the existing ones (no cont
 change expected for github-releases packages — only the `# To regenerate:` comment
 line changes from `nix-shell` to `nix run .#default.<pkg>.gen-hashes`).
 For triton, per-version files are expected instead of `any.nix`.
-
-## Other pending items (from human-todo-notes.md)
-
-- `concretise` pre-resolution overlay hook: apply an overlay/override AFTER HDLs
-  are solved but before non-HLD python packages are resolved
-- HLD python package dependency resolution (indefinitely postponed per request.txt
-  — keep info in refactor_impl.md but do not start implementation)

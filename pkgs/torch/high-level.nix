@@ -71,7 +71,7 @@ in
   #   { pkgs, cudaPackages, cudaLabel, resolvedDeps, version }
   #
   # torch depends on triton; the resolved triton derivation is in resolvedDeps.
-  buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
+  buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, mkOverlayInfo ? null, wrappers ? null }:
     let
       binaryHashes = import (./binary-hashes + "/${cudaLabel}.nix");
       base = import ./overlay-common.nix {
@@ -84,6 +84,6 @@ in
     base;
 
   # ── Build from source ──────────────────────────────────────────────────────
-  buildSource = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
+  buildSource = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, mkOverlayInfo ? null, wrappers ? null }:
     throw "torch/high-level.nix: buildSource is not yet implemented";
 }

@@ -11,7 +11,7 @@
 #   mkOverlayInfo
 #     Builds the standard mkOverlayInfo constructor function used by every
 #     buildBin / buildSource call.  Closes over the package identity fields
-#     so that neither overlay.nix nor overlay-source.nix needs to repeat them.
+#     so that neither overlay-bin.nix nor overlay-source.nix needs to repeat them.
 #     Usage in high-level.nix:
 #       mkOverlayInfo = hldHelpers.mkOverlayInfo {
 #         inherit pname srcOwner srcRepo mkChangelog;
@@ -41,7 +41,7 @@
 # cudaLabel.  A version is only returned if a pre-built wheel actually exists
 # for the requested (cuda, python) combination — not merely for the cuda label
 # alone.  This allows concretise to fail early with a clear diagnostic instead
-# of surfacing a cryptic evaluation error deep inside an overlay.nix file.
+# of surfacing a cryptic evaluation error deep inside an overlay-bin.nix file.
 #
 # Usage in a high-level.nix (injected via pkgs/default.nix scope):
 #
@@ -75,7 +75,7 @@
   # mkOverlayInfo
   #
   # Factory that produces the mkOverlayInfo constructor function consumed by
-  # each package's overlay.nix and overlay-source.nix.  Takes the package
+  # each package's overlay-bin.nix and overlay-source.nix.  Takes the package
   # identity fields as a named-argument attrset and returns a curried function:
   #
   #   mkOverlayInfo identityAttrs buildArgs -> overlayInfo attrset

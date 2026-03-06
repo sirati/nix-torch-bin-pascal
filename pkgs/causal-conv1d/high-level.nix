@@ -23,40 +23,16 @@
 # Fail early if the caller passed something other than a high-level derivation.
 assert hldHelpers.isHLD torch;
 
-let
-  # ── Package identity ───────────────────────────────────────────────────────
-  # pname and nixpkgsAttr both equal packageName ("causal-conv1d") and are
-  # therefore omitted from the returned attrset; hld-type.nix validate fills
-  # them in with packageName automatically.
-
-  # GitHub source coordinates.  Provide defaults; overlay-source.nix reads
-  # srcInfo.owner / srcInfo.repo first and falls back to these.
-  srcOwner = "Dao-AILab";
-  srcRepo  = "causal-conv1d";
-
-  # Changelog URL template (receives the resolved version string).
-  mkChangelog = hldHelpers."github-release-tag" srcOwner srcRepo;
-
-  # ── overlayInfo constructor ────────────────────────────────────────────────
-  # Standard implementation from hldHelpers.  Builds the common context attrset
-  # consumed by overlay.nix and overlay-source.nix.  Called once per
-  # buildBin / buildSource invocation with the concretise-supplied pkgs,
-  # cudaPackages, resolved version, and deps.
-  mkOverlayInfo = hldHelpers.mkOverlayInfo {
-    pname       = packageName;
-    nixpkgsAttr = packageName;
-    inherit srcOwner srcRepo mkChangelog;
-  };
-
-in
 {
   # ── Origin type ────────────────────────────────────────────────────────────
   originType = "github-releases";
 
   # ── Identity fields ────────────────────────────────────────────────────────
-  # pname and nixpkgsAttr are omitted here (both equal packageName);
-  # hld-type.nix validate fills them in automatically.
-  inherit srcOwner srcRepo mkChangelog mkOverlayInfo;
+  # pname and nixpkgsAttr both equal packageName ("causal-conv1d") and are
+  # filled in automatically by hld-type.nix validate.
+  # mkChangelog and mkOverlayInfo are auto-derived for "github-releases" origin.
+  srcOwner = "Dao-AILab";
+  srcRepo  = "causal-conv1d";
 
   # ── Binary availability ────────────────────────────────────────────────────
   # causal-conv1d uses per-version files: binary-hashes/v{version}.nix
@@ -80,31 +56,24 @@ in
 
   # ── Build from pre-built wheel ─────────────────────────────────────────────
   #
-  # Received from concretise:
-  #   { pkgs, cudaPackages, wrappers, cudaLabel, resolvedDeps, version }
-  #
-  # causal-conv1d wheels are generic across CUDA 12.x, so we always use "cu12"
-  # as the cudaVersion passed to overlay.nix regardless of cudaLabel.
-  buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
-    import ./overlay.nix {
+  # mkOverlayInfo is injected by concretise from the validated HLD.
+  # causal-conv1d wheels are generic across CUDA 12.x, so we always use "cu12".
+  buildBin = { mkOverlayInfo, pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
+    import ./overlay-bin.nix {
       overlayInfo = mkOverlayInfo { inherit pkgs cudaPackages version resolvedDeps; };
       cudaVersion = "cu12";
-      # cxx11abi defaults to "TRUE" in overlay.nix, matching standard pip wheels
     };
 
   # ── Build from source ──────────────────────────────────────────────────────
   #
   # Called by concretise when canBuildBin returns false (pre-built wheel is
   # ABI-incompatible with the resolved torch) and allowBuildingFromSource = true.
-  # Also called when no binary version exists at all (version may be non-null
-  # when the binary is ABI-incompatible, or null if no hash file exists).
-  buildSource = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
+  buildSource = { mkOverlayInfo, pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
     let
       v = hldHelpers.requireSourceHash
             "causal-conv1d" "pkgs/causal-conv1d" ./source-hashes
             { inherit version cudaLabel; };
     in
-    # (import ../../nix-retry-wrapper/inject-wrappers.nix wrappers)  # re-enable wrappers
     import ./overlay-source.nix {
       overlayInfo = mkOverlayInfo { inherit pkgs cudaPackages resolvedDeps; version = v; };
     };

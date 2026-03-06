@@ -71,7 +71,7 @@ in
   #   { pkgs, cudaPackages, cudaLabel, resolvedDeps, version }
   #
   # triton does not use resolvedDeps (it has no deps).
-  buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
+  buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, mkOverlayInfo ? null, wrappers ? null }:
     let
       perVersionPath = ./binary-hashes + "/v${version}.nix";
       legacyAnyPath  = ./binary-hashes + "/any.nix";
@@ -85,7 +85,7 @@ in
           or (throw "triton buildBin: version ${version} not found in binary-hashes/any.nix")
         else throw "triton buildBin: no binary hashes found for version ${version}";
 
-      base = import ./overlay.nix {
+      base = import ./overlay-bin.nix {
         inherit pkgs cudaPackages versionHashes;
         tritonVersion = version;
       };
@@ -94,6 +94,6 @@ in
     base;
 
   # ── Build from source ──────────────────────────────────────────────────────
-  buildSource = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
+  buildSource = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, mkOverlayInfo ? null, wrappers ? null }:
     throw "triton/high-level.nix: buildSource is not yet implemented";
 }

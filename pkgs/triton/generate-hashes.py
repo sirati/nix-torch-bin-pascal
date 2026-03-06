@@ -168,6 +168,7 @@ def _generate() -> None:
         HEADER_TEMPLATE,
         VERSION_SPEC,
         prefix_attrs_fn=lambda version: {"_version": version},
+        skip_existing=True,
     )
 
 

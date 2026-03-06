@@ -180,6 +180,44 @@ let
     allowBuildingFromSource = false;
   };
 
+  # ── Test: all three packages from source, Python 3.13, CUDA 12.6 ─────────
+  testAllCu126Result = concretise {
+    inherit pkgs;
+    mlPackages = [
+      pytorchScope.torch
+      pytorchScope."flash-attn"
+      pytorchScope."causal-conv1d"
+    ];
+    python                  = "3.13";
+    cuda                    = "12.6";
+    torch                   = "2.10";
+    allowBuildingFromSource = true;
+  };
+
+  # ── Test: torch-only, Python 3.13, CUDA 13.0 ─────────────────────────────
+  testTorchCu130Result = concretise {
+    inherit pkgs;
+    mlPackages              = [ pytorchScope.torch ];
+    python                  = "3.13";
+    cuda                    = "13.0";
+    torch                   = "2.10";
+    allowBuildingFromSource = false;
+  };
+
+  # ── Test: all packages from source, Python 3.13, CUDA 13.0 ───────────────
+  testAllCu130Result = concretise {
+    inherit pkgs;
+    mlPackages = [
+      pytorchScope.torch
+      pytorchScope."flash-attn"
+      pytorchScope."causal-conv1d"
+    ];
+    python                  = "3.13";
+    cuda                    = "13.0";
+    torch                   = "2.10";
+    allowBuildingFromSource = true;
+  };
+
 in
 {
   packages = {
@@ -195,6 +233,9 @@ in
     test-mamba-source-py313-cu128              = testMambaSourceCu128Result.env;
     test-torch-py313-cu126                     = testTorchCu126Result.env;
     test-flash-attn-bin-py313-cu126            = testFlashAttnBinCu126Result.env;
+    test-all-py313-cu126                       = testAllCu126Result.env;
+    test-torch-py313-cu130                     = testTorchCu130Result.env;
+    test-all-py313-cu130                       = testAllCu130Result.env;
   };
 
   devShells = {
@@ -210,6 +251,9 @@ in
     test-mamba-source-py313-cu128              = testMambaSourceCu128Result.devShell;
     test-torch-py313-cu126                     = testTorchCu126Result.devShell;
     test-flash-attn-bin-py313-cu126            = testFlashAttnBinCu126Result.devShell;
+    test-all-py313-cu126                       = testAllCu126Result.devShell;
+    test-torch-py313-cu130                     = testTorchCu130Result.devShell;
+    test-all-py313-cu130                       = testAllCu130Result.devShell;
   };
 
   apps = {
@@ -225,6 +269,9 @@ in
     test-mamba-source-py313-cu128              = makeTestApp testMambaSourceCu128Result.env       "test-mamba-source-py313-cu128";
     test-torch-py313-cu126                     = makeTestApp testTorchCu126Result.env             "test-torch-py313-cu126";
     test-flash-attn-bin-py313-cu126            = makeTestApp testFlashAttnBinCu126Result.env      "test-flash-attn-bin-py313-cu126";
+    test-all-py313-cu126                       = makeTestApp testAllCu126Result.env               "test-all-py313-cu126";
+    test-torch-py313-cu130                     = makeTestApp testTorchCu130Result.env             "test-torch-py313-cu130";
+    test-all-py313-cu130                       = makeTestApp testAllCu130Result.env               "test-all-py313-cu130";
     test-mamba-autotune-py313-cu128            = {
       type    = "app";
       program = toString (pkgs.writeShellScript "run-autotune-py313-cu128" ''

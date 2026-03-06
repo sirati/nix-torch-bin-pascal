@@ -27,12 +27,12 @@ wheelHelpers.buildBinWheel {
   inherit overlayInfo cudaVersion cxx11abi;
   binaryHashesDir = ./binary-hashes;
 
-  # mamba-ssm depends on causal-conv1d, einops, and transformers
-  extraDependencies = with pkgs.python3Packages; [
+  # mamba-ssm depends on causal-conv1d (from resolvedDeps), einops, and transformers.
+  # causal-conv1d must NOT come from pkgs.python3Packages — it must be the
+  # concretised derivation passed as an argument to avoid store-path conflicts.
+  extraDependencies = [
     causal-conv1d
-    einops
-    transformers
+    pkgs.python3Packages.einops
+    pkgs.python3Packages.transformers
   ];
-
-  # pythonImportsCheck: default derives "mamba_ssm" from pname — correct.
 }

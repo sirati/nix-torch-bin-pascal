@@ -76,8 +76,18 @@
                           # withPackages-style function for additional nixpkgs Python
                           # packages to include in env alongside the HLD packages,
                           # e.g. extraPythonPackages = ps: [ ps.pandas ps.numpy ]
+, pythonPackageOverrides ? _self: _super: {}
+                          # Optional overlay applied to basePython.pkgs BEFORE any
+                          # HLD packages are built.  Use this to pin or override
+                          # non-HLD Python packages (e.g. einops, transformers) that
+                          # HLD overlay files pull in via pkgs.python3Packages.
+                          # Applied after HDL resolution but before package building.
+                          # Example:
+                          #   pythonPackageOverrides = self: super: {
+                          #     einops = super.einops.overrideAttrs { version = "0.9.0"; };
+                          #   };
 , python                  # "3.11" | "3.12" | "3.13" | "3.14"
-, cuda                    # "12.6" | "12.8"
+, cuda                    # "12.6" | "12.8" | "13.0"
 , torch                   # required – major.minor torch series, e.g. "2.10"
                           # Wheels are NOT forward-compatible across minor versions,
                           # so this must be specified explicitly to avoid silently
@@ -101,7 +111,7 @@ let
   # ── Input validation ──────────────────────────────────────────────────────
 
   _validPythons = [ "3.11" "3.12" "3.13" "3.14" ];
-  _validCudas   = [ "12.6" "12.8" ];
+  _validCudas   = [ "12.6" "12.8" "13.0" ];
 
   # torch is validated as a free-form "major.minor" string rather than an
   # enumerated list, because new minor releases appear frequently.
@@ -182,9 +192,18 @@ let
   # Matches the pyVer computed by generate-hashes/lib.nix at build time.
   pyVer = "py" + lib.replaceStrings [ "." ] [ "" ] python;
 
-  basePython =
+  _rawPython =
     pkgs.${pythonAttrName}
     or (throw "concretise: python ${python} not found in nixpkgs as '${pythonAttrName}'");
+
+  # Apply user-supplied pythonPackageOverrides to the base interpreter so that
+  # HLD overlay files (which reference pkgs.python3Packages.*) see the
+  # overridden packages.  This runs AFTER HDL resolution but BEFORE packages
+  # are built, giving the user a hook to pin or replace non-HLD dependencies
+  # (e.g. einops, transformers) without touching HLD definitions.
+  basePython = _rawPython.override {
+    packageOverrides = pythonPackageOverrides;
+  };
 
   # ── CUDA label & package set ──────────────────────────────────────────────
 
@@ -193,11 +212,13 @@ let
   cudaLabel =
     if      cuda == "12.6" then "cu126"
     else if cuda == "12.8" then "cu128"
+    else if cuda == "13.0" then "cu130"
     else throw "concretise: unsupported cuda '${cuda}'";  # unreachable after _checkCuda
 
   baseCudaPackages =
     if      cudaLabel == "cu126" then pkgs.cudaPackages_12_6
-    else                              pkgs.cudaPackages_12_8;
+    else if cudaLabel == "cu128" then pkgs.cudaPackages_12_8
+    else                              pkgs.cudaPackages_13_0;
 
   cudaPackages =
     if !pascal then
@@ -224,7 +245,7 @@ let
   # ── pkgs variant for building ─────────────────────────────────────────────
 
   # Override stdenv → GCC 13 (required by CUDA 12.x) and point python3 at the
-  # chosen interpreter so that overlay.nix files automatically pick it up via
+  # chosen interpreter so that overlay-bin.nix files automatically pick it up via
   # pkgs.python3 / pkgs.python3Packages.
   pkgsForBuild = pkgs // {
     stdenv          = pkgs.overrideCC pkgs.stdenv pkgs.gcc13;
@@ -385,6 +406,7 @@ let
       args    = {
         pkgs = pkgsForBuild;
         inherit cudaPackages cudaLabel resolvedDeps version;
+        mkOverlayInfo = hld.mkOverlayInfo;
         # inherit wrappers; # re-enable together with wrappers above
       };
       # canBuildBin is an optional HLD field (default: always true).

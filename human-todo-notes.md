@@ -23,7 +23,6 @@ i.e. if a pkg in python defines that torch = >=2.8 we need to translate that int
 
 for wheels this is also relevant, as wheels may have a direct binary based dependency on other wheels, which may become incompatible for future versions (i.e. already incompatible now, but was not known when that version was released.)
 
-
 The real current failure is **triton version conflict**:
 - `pkgs.python3Packages.triton` → 3.5.1 (nixpkgs)
 - torch 2.10.0 already propagates triton 3.6.0
@@ -38,14 +37,11 @@ i.e. rn this is done manually in override-source:
 instead this needs to be handles via hdl and concretise. in an hdl we need to define which packages we depend on in an hld independent way. instead when the fix point could not resolve dependencies, we then fallback by a) checking that a python package exist with that name. b) during concretissation some of these may be set already via functions of hdls. if after that it still is not resolved we fallback on the existing one in the nixpkgs python pkgs.python3Packages.<package_name>, this was if we later add a new hdl for an existing pkgs.python3Packages.<package_name> then we do not need to adjust other hdls.
 Further as long as hdls define all such dependencies the hdl can then provide default behaviour for the override.nix and override-source.nix further reducing boilerplate. 
 
-
-
-
 ✅
 lets add test cases for cuda 12.6 and cuda 13.0
 
+✅
 concretise should support applying an overlay/override AFTER HDLs are solved but before python packages that no HDL depends on are resolved.  
-
 
 doing
 ```
@@ -82,14 +78,12 @@ wheelHelpers.buildBinWheel {
   extraDependencies  = [ pkgs.python3Packages.einops ];
 ```  
 which takes einops from the unmodified python3Packages, instead this needs to be updates, so that we use the python environment that concretise is building rn, i.e. use the dependency of our own python 
-  
 
-
+✅
 lets change overlay.nix to overlay-bin.nix everywhere to make clear that one is source and one is bin
 
-
+✅
 i have noticed for running binary-hashed with a tag, it does all the parsing, and then realised the file already exists, and discards the work. instead when run explicitly with a tag, it should always replace the file. when run without a tag, it should only do fetching and parsing, if the file does not exist already.
-
 
 ```
  buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
@@ -152,4 +146,5 @@ in
   # hld-type.nix validate fills them in automatically.
   inherit srcOwner srcRepo mkChangelog mkOverrideInfo;
 ```
+✅
 most HDLs contain all these variables that i believe do not need to be defined via let and then inherited. also mkChangelog should be the default for originType = "github-releases"; like this, and mkOverrideInfo should take the values for pname and nixpkgsAttr directly from the HDL in the default implementation.

@@ -6,10 +6,10 @@
 #   2. Select the best compat key <= resolvedTorchMajorMinor.
 #   3. Fetch the wheel and build a Python package derivation from it.
 #
-# This file factors that logic out so each package's overlay.nix is a thin
+# This file factors that logic out so each package's overlay-bin.nix is a thin
 # wrapper that only supplies the package-specific bits (extra deps, etc.).
 #
-# Usage (from a package's overlay.nix):
+# Usage (from a package's overlay-bin.nix):
 #
 #   let
 #     wheelHelpers = import ../../wheel-helpers.nix;
