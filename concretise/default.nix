@@ -457,10 +457,14 @@ let
       # across all CUDA and torch versions, so their stamp is just "-bin".
       # The torch package itself skips the "-torch…" prefix since its own
       # pname already encodes the package identity.
-      cudaAgnostic = hld.cudaAgnostic or false;
-      isTorchPkg   = hld.packageName == "torch";
+      cudaAgnostic  = hld.cudaAgnostic or false;
+      torchAgnostic = hld.torchAgnostic or false;
+      isTorchPkg    = hld.packageName == "torch";
+      # torchAgnostic packages (e.g. bitsandbytes) do not link against torch
+      # at the C++/ABI level, so they skip the -torch{series} dimension.
+      # cudaAgnostic packages (e.g. triton) skip all of cuda/torch/pascal.
       nameSuffix =
-        lib.optionalString (!cudaAgnostic && !isTorchPkg) "-torch${_torchSeriesDigits}"
+        lib.optionalString (!cudaAgnostic && !torchAgnostic && !isTorchPkg) "-torch${_torchSeriesDigits}"
         + lib.optionalString (!cudaAgnostic) "-${cudaLabel}"
         + lib.optionalString (!cudaAgnostic && pascal) "-pascal"
         + lib.optionalString binCompatible "-bin";

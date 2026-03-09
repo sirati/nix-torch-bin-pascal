@@ -182,6 +182,16 @@ let
       default = false;
     };
 
+    torchAgnostic = {
+      description =
+        "bool – when true the package does not link against torch at the "
+        + "C++/ABI level (e.g. bitsandbytes).  The store-path stamp omits "
+        + "the -torch{series} dimension so the derivation is reused across "
+        + "torch version changes.  The package may still depend on torch at "
+        + "Python runtime level.  Default: false.";
+      default = false;
+    };
+
     data = {
       description = "attrset – arbitrary package-specific metadata";
       default     = {};

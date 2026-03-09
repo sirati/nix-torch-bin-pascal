@@ -51,6 +51,19 @@ https://raw.githubusercontent.com/NixOS/nixpkgs/refs/heads/nixos-unstable/pkgs/d
 ## GitHub releases (binary wheels)
 https://github.com/state-spaces/mamba/releases
 
+# bitsandbytes
+## Directory
+### Unraw
+https://github.com/NixOS/nixpkgs/tree/nixos-unstable/pkgs/development/python-modules/bitsandbytes
+## Source build
+### Unraw
+https://github.com/NixOS/nixpkgs/blob/nixos-unstable/pkgs/development/python-modules/bitsandbytes/default.nix
+### Raw
+https://raw.githubusercontent.com/NixOS/nixpkgs/refs/heads/nixos-unstable/pkgs/development/python-modules/bitsandbytes/default.nix
+## Patch
+### Raw
+https://raw.githubusercontent.com/NixOS/nixpkgs/refs/heads/nixos-unstable/pkgs/development/python-modules/bitsandbytes/find-rocm-deps-with-cmake.patch
+
 # einops
 ## Source build
 ### Unraw

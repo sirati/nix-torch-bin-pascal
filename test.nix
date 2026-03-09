@@ -110,14 +110,16 @@ let
     allowBuildingFromSource = true;
   };
 
-  # ── Test: all three packages, Python 3.13, CUDA 12.8 ─────────────────────
+  # ── Test: all packages, Python 3.13, CUDA 12.8 ───────────────────────────
   # causal-conv1d requires a source build with torch 2.10.
+  # bitsandbytes is always built from source (no pre-built CUDA wheels).
   testAllCu128Result = concretise {
     inherit pkgs;
     mlPackages = [
       pytorchScope.torch
       pytorchScope."flash-attn"
       pytorchScope."causal-conv1d"
+      pytorchScope.bitsandbytes
     ];
     python                  = "3.13";
     cuda                    = "12.8";
@@ -180,13 +182,14 @@ let
     allowBuildingFromSource = false;
   };
 
-  # ── Test: all three packages from source, Python 3.13, CUDA 12.6 ─────────
+  # ── Test: all packages from source, Python 3.13, CUDA 12.6 ───────────────
   testAllCu126Result = concretise {
     inherit pkgs;
     mlPackages = [
       pytorchScope.torch
       pytorchScope."flash-attn"
       pytorchScope."causal-conv1d"
+      pytorchScope.bitsandbytes
     ];
     python                  = "3.13";
     cuda                    = "12.6";
@@ -211,6 +214,7 @@ let
       pytorchScope.torch
       pytorchScope."flash-attn"
       pytorchScope."causal-conv1d"
+      pytorchScope.bitsandbytes
     ];
     python                  = "3.13";
     cuda                    = "13.0";
