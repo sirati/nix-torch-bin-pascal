@@ -93,3 +93,11 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
             "Cannot be combined with --skip-source."
         ),
     )
+    parser.add_argument(
+        "--regenerate",
+        action="store_true",
+        help=(
+            "Regenerate (overwrite) all existing hash files instead of "
+            "skipping them.  Useful after format changes."
+        ),
+    )

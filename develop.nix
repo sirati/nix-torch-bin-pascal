@@ -12,7 +12,7 @@ let
     nixd
     vscode-json-languageserver
     bash-language-server
-    package-version-server
+    basedpyright
   ];
 
   makeShell = { pascal, deploymentPythonPackages, deploymentPackages }: pkgs.mkShell {

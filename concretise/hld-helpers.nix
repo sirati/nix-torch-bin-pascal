@@ -173,6 +173,40 @@
     else [];
 
   # --------------------------------------------------------------------------
+  # getVersionsFromCudaFilesStableAbi
+  #
+  # binaryHashesDir : path to the binary-hashes/ directory
+  # cudaLabel       : e.g. "cu126" or "cu128"
+  # _pyVer          : ignored (stable-ABI packages have one wheel for all
+  #                   Python 3.10+; no per-pyVer filtering needed)
+  #
+  # Returns the list of version strings present in
+  #   binaryHashesDir/{cudaLabel}.nix
+  # or [] if no such file exists.
+  #
+  # File structure assumed:  version -> os -> arch -> wheelData
+  # The file may carry a self-identifying _cudaLabel attribute at the top
+  # level; that key is filtered out before version enumeration.
+  #
+  # Intended for packages like torchao whose wheels use the Python Stable
+  # ABI (cp310-abi3) and are per-CUDA-variant but not per-Python-version.
+  # --------------------------------------------------------------------------
+  getVersionsFromCudaFilesStableAbi = binaryHashesDir: cudaLabel: _pyVer:
+    let
+      f = binaryHashesDir + "/${cudaLabel}.nix";
+    in
+    if builtins.pathExists f
+    then
+      let
+        attrset     = import f;
+        allVersions = builtins.filter
+          (k: builtins.match "_.*" k == null)
+          (builtins.attrNames attrset);
+      in
+      allVersions
+    else [];
+
+  # --------------------------------------------------------------------------
   # getVersionsFromSourceFiles
   #
   # sourceHashesDir : path to the source-hashes/ directory

@@ -1,6 +1,6 @@
 # WARNING: Auto-generated file. Do not edit manually!
 # Source:  https://github.com/Dao-AILab/flash-attention/releases
-# To regenerate: nix-shell pkgs/flash-attn/generate-hashes.py [-- --tag v2.7.3]
+# To regenerate: nix run .#default.flash-attn.gen-hashes [-- --skip-source --tag v2.7.3]
 #
 # Structure: cudaVersion -> torchCompat -> pyVer -> os -> arch
 #

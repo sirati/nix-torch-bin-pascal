@@ -18,7 +18,7 @@ Optional fields with conditional defaults (depend on `originType`):
 
 `packageName` is injected from the directory name by `pkgs/default.nix`; HLD files never set it but may declare it in their argument list to use as a value.
 
-`originType` allowed values: `"github-releases"`, `"torch-website"`.  Current packages: causal-conv1d, flash-attn, mamba-ssm use `"github-releases"`; torch and triton use `"torch-website"`.
+`originType` allowed values: `"github-releases"`, `"torch-website"`.  Current packages: causal-conv1d, flash-attn, mamba-ssm, bitsandbytes use `"github-releases"`; torch, triton, and torchao use `"torch-website"`.
 
 For `"github-releases"` packages, `mkChangelog` and `mkOverlayInfo` are auto-derived by `hld-type.nix` validate — HDL files need only provide `srcOwner` and `srcRepo`. `buildBin`/`buildSource` receive `mkOverlayInfo` from concretise via args (injected from the validated HLD), so they do not need to close over it locally.
 
@@ -28,7 +28,7 @@ For `"torch-website"` packages, `mkChangelog` and `mkOverlayInfo` must be provid
 
 When `cudaAgnostic = true` (set on triton) the store-path stamp omits the cuda, torch, and pascal dims so that the same triton derivation name is produced regardless of the enclosing concretise call's CUDA/torch settings.
 
-See [`pkgs/torch/high-level.nix`](pkgs/torch/high-level.nix), [`pkgs/triton/high-level.nix`](pkgs/triton/high-level.nix), [`pkgs/flash-attn/high-level.nix`](pkgs/flash-attn/high-level.nix), [`pkgs/causal-conv1d/high-level.nix`](pkgs/causal-conv1d/high-level.nix), [`pkgs/mamba-ssm/high-level.nix`](pkgs/mamba-ssm/high-level.nix).
+See [`pkgs/torch/high-level.nix`](pkgs/torch/high-level.nix), [`pkgs/triton/high-level.nix`](pkgs/triton/high-level.nix), [`pkgs/flash-attn/high-level.nix`](pkgs/flash-attn/high-level.nix), [`pkgs/causal-conv1d/high-level.nix`](pkgs/causal-conv1d/high-level.nix), [`pkgs/mamba-ssm/high-level.nix`](pkgs/mamba-ssm/high-level.nix), [`pkgs/bitsandbytes/high-level.nix`](pkgs/bitsandbytes/high-level.nix), [`pkgs/torchao/high-level.nix`](pkgs/torchao/high-level.nix).
 
 ## cudaPackages overrides
 
@@ -67,6 +67,7 @@ Steps:
 - `getVersionsFromCudaFiles` — torch layout (one file per cuda label).
 - `getVersionsFromVersionFiles` — flash-attn / causal-conv1d / mamba-ssm layout (one file per package version).
 - `getVersionsFromAnyVersionFiles` — triton layout (per-version files, CUDA-agnostic).
+- `getVersionsFromCudaFilesStableAbi` — torchao layout (per-CUDA-label files, stable ABI, no pyVer filtering).
 - `getVersionsFromSourceFiles` — source-hashes layout.
 - `canBuildBinFromVersionFiles` — shared `canBuildBin` for version-file packages.
 - `requireSourceHash` — shared `buildSource` pre-flight; validates version non-null and source-hashes file exists; returns validated version string or throws.
@@ -105,7 +106,7 @@ All generated hash files are self-identifying: binary-hash files carry `_version
 `generateHashesScript` is an optional HLD field (dynamic default: auto-detects `pkgs/<packageName>/generate-hashes.py`).  `flake.nix` exposes a flake app at `apps.<system>.default.<packageName>.gen-hashes` for every HLD with a non-null `generateHashesScript`.
 
 `binary-hashes/` layout variants:
-- **Per-CUDA-label** (`{cudaLabel}.nix`, e.g. `cu128.nix`): used by torch.
+- **Per-CUDA-label** (`{cudaLabel}.nix`, e.g. `cu128.nix`): used by torch and torchao.
 - **Per-version** (`v{version}.nix`): used by flash-attn, causal-conv1d, mamba-ssm.
 - **CUDA-agnostic per-version** (`v{version}.nix`): used by triton. `getVersionsFromAnyVersionFiles` scans for `v{semver}.nix` files and ignores `cudaLabel` entirely.
 
@@ -118,6 +119,23 @@ Triton is a separate HLD (`pkgs/triton/`) with pre-built wheels from `https://do
 `pkgs/triton/overlay-bin.nix` extends the upstream `triton-bin` derivation with two NixOS compatibility fixes in `postFixup`:
 1. **ldconfig patch**: `driver.py` calls `/sbin/ldconfig -p` directly; patched to short-circuit via CUDA stubs dir.
 2. **C compiler patch**: `triton/runtime/build.py` searches for `gcc`/`clang` on `PATH`; patched to fall back to Nix-provided `gcc`.
+
+## torchao HLD
+
+torchao (`pkgs/torchao/`) provides PyTorch-native quantization, sparsity, and optimization.  Wheels are distributed via `https://download.pytorch.org/whl/<cuVariant>/torchao/` (origin type `"torch-website"`).
+
+Key properties:
+- **Per-CUDA-variant** wheels (not cudaAgnostic): different wheels for cu126, cu128, cu130.
+- **Stable ABI** (`cp310-abi3`): a single wheel per CUDA variant serves all Python 3.10+.  No per-pyVer dimension in hash files.
+- **`torchAgnostic = true`**: CUDA kernels are compiled directly against CUDA libs, not against torch C++ ABI.  Store path omits the torch series dimension.
+- **Has one submodule** (`third_party/cutlass`): source builds require `fetchSubmodules = true`.
+- **Hash file layout**: `binary-hashes/{cudaLabel}.nix` with structure `version -> os -> arch -> {name, url, hash}`.
+
+`getVersionsFromCudaFilesStableAbi` is used for version resolution (ignores pyVer parameter since stable ABI wheels work for all Python 3.10+).
+
+`overlay-bin.nix` builds a `buildPythonPackage` directly (does not use `wheel-helpers.nix` `buildBinWheel`, since the hash structure lacks the torchCompat and pyVer dimensions that `buildBinWheel` expects).
+
+`generate-hashes/source_torchao.py` provides the `TorchaoWheelSource` class (analogous to `TorchWheelSource` for torch and `TritonWheelSource` for triton).
 
 ## Retry wrappers
 

@@ -1,6 +1,6 @@
 # WARNING: Auto-generated file. Do not edit manually!
 # Source:  https://github.com/Dao-AILab/flash-attention/releases
-# To regenerate: nix-shell pkgs/flash-attn/generate-hashes.py [-- --skip-source --tag v2.8.1]
+# To regenerate: nix run .#default.flash-attn.gen-hashes [-- --skip-source --tag v2.8.1]
 #
 # Structure: cudaVersion -> torchCompat -> pyVer -> os -> arch
 #
@@ -337,6 +337,24 @@
             name = "flash_attn-2.8.1+cu12torch2.9cxx11abiTRUE-cp312-cp312-linux_x86_64.whl";
             url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.1/flash_attn-2.8.1%2Bcu12torch2.9cxx11abiTRUE-cp312-cp312-linux_x86_64.whl";
             hash = "sha256-iOpQ2XIAsbC3TxAMVSWujhgnquX9QbSI9Pp0iXJbTlY=";
+          };
+        };
+      };
+    };
+
+    # ── torch 2.10 ────────────────────────────────────────────────────────
+    "2.10" = {
+      py312 = {
+        linux = {
+          aarch64 = {
+            name = "flash_attn-2.8.1+cu12torch2.10cxx11abiTRUE-cp312-cp312-linux_aarch64.whl";
+            url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.1/flash_attn-2.8.1%2Bcu12torch2.10cxx11abiTRUE-cp312-cp312-linux_aarch64.whl";
+            hash = "sha256-960PqcbMF5T5TgQFAA4DwlMR+4pCy0gK+0Ow5kpaUtc=";
+          };
+          x86_64 = {
+            name = "flash_attn-2.8.1+cu12torch2.10cxx11abiTRUE-cp312-cp312-linux_x86_64.whl";
+            url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.1/flash_attn-2.8.1%2Bcu12torch2.10cxx11abiTRUE-cp312-cp312-linux_x86_64.whl";
+            hash = "sha256-9HNhrw6+En24AEDLculH46Lvl8WdZB3wwWfFtIyv3Cg=";
           };
         };
       };

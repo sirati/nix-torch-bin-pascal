@@ -58,6 +58,7 @@ How the hash is computed
     object whose ``hash`` field is the SRI NAR hash.  Requires
     ``nix-prefetch-github`` on PATH (add it to your nix-shell packages).
 """
+
 from __future__ import annotations
 
 import json
@@ -68,10 +69,10 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 
-
 # ---------------------------------------------------------------------------
 # Data type
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class SourceEntry:
@@ -103,16 +104,18 @@ class SourceEntry:
         GitHub repository name override.  Empty string means "use the
         package default".
     """
+
     version: str
     tag: str
     hash: str
     owner: str = field(default="")
-    repo:  str = field(default="")
+    repo: str = field(default="")
 
 
 # ---------------------------------------------------------------------------
 # Hash computation — tarball (no submodules)
 # ---------------------------------------------------------------------------
+
 
 def fetch_github_source_hash(owner: str, repo: str, tag: str) -> str:
     """
@@ -138,16 +141,16 @@ def fetch_github_source_hash(owner: str, repo: str, tag: str) -> str:
     subprocess.CalledProcessError
         If ``nix store prefetch-file`` exits non-zero.
     """
-    url = (
-        f"https://github.com/{owner}/{repo}"
-        f"/archive/refs/tags/{tag}.tar.gz"
-    )
+    url = f"https://github.com/{owner}/{repo}/archive/refs/tags/{tag}.tar.gz"
     print(f"  Fetching NAR hash for {owner}/{repo} @ {tag} …", file=sys.stderr)
     try:
         result = subprocess.run(
             [
-                "nix", "store", "prefetch-file",
-                "--hash-type", "sha256",
+                "nix",
+                "store",
+                "prefetch-file",
+                "--hash-type",
+                "sha256",
                 "--unpack",
                 "--json",
                 url,
@@ -180,6 +183,7 @@ def fetch_github_source_hash(owner: str, repo: str, tag: str) -> str:
 # ---------------------------------------------------------------------------
 # Hash computation — git clone with submodules
 # ---------------------------------------------------------------------------
+
 
 def fetch_github_source_hash_with_submodules(owner: str, repo: str, tag: str) -> str:
     """
@@ -226,7 +230,8 @@ def fetch_github_source_hash_with_submodules(owner: str, repo: str, tag: str) ->
             [
                 "nix-prefetch-github",
                 "--fetch-submodules",
-                "--rev", tag,
+                "--rev",
+                tag,
                 owner,
                 repo,
             ],
@@ -274,6 +279,7 @@ def fetch_github_source_hash_with_submodules(owner: str, repo: str, tag: str) ->
 # ---------------------------------------------------------------------------
 # Hash computation — batch git clone with submodules (multi-tag optimisation)
 # ---------------------------------------------------------------------------
+
 
 def _copy_tree_without_git(src: str, dst: str) -> None:
     """
@@ -372,7 +378,8 @@ def fetch_github_source_hashes_with_submodules_batch(
         )
         subprocess.run(
             [
-                "git", "clone",
+                "git",
+                "clone",
                 "--filter=blob:none",
                 "--no-checkout",
                 url,
@@ -383,8 +390,7 @@ def fetch_github_source_hashes_with_submodules_batch(
 
         for tag in tags:
             print(
-                f"  [batch] {owner}/{repo} @ {tag} — "
-                f"checkout + submodule update …",
+                f"  [batch] {owner}/{repo} @ {tag} — checkout + submodule update …",
                 file=sys.stderr,
             )
 
@@ -399,8 +405,13 @@ def fetch_github_source_hashes_with_submodules_batch(
             # a previous tag do not require another network round-trip.
             subprocess.run(
                 [
-                    "git", "-C", mirror_dir,
-                    "submodule", "update", "--init", "--recursive",
+                    "git",
+                    "-C",
+                    mirror_dir,
+                    "submodule",
+                    "update",
+                    "--init",
+                    "--recursive",
                 ],
                 check=True,
             )
@@ -423,8 +434,7 @@ def fetch_github_source_hashes_with_submodules_batch(
             sri = hash_result.stdout.strip()
             if not sri:
                 raise RuntimeError(
-                    f"`nix hash path` returned an empty hash for "
-                    f"{owner}/{repo}@{tag}"
+                    f"`nix hash path` returned an empty hash for {owner}/{repo}@{tag}"
                 )
 
             print(f"    → {sri}", file=sys.stderr)
@@ -440,6 +450,7 @@ def fetch_github_source_hashes_with_submodules_batch(
 # Per-version file I/O
 # ---------------------------------------------------------------------------
 
+
 def _source_hash_path(output_dir: str, version: str) -> str:
     """Return the path for a source-hash file, e.g. ``…/v1.6.0.nix``."""
     return os.path.join(output_dir, f"v{version}.nix")
@@ -454,18 +465,27 @@ def write_source_hash_file(output_dir: str, entry: SourceEntry) -> None:
     """
     Write (or overwrite) ``source-hashes/v{version}.nix`` for *entry*.
 
-    The file is a minimal Nix attrset::
+    The file is a minimal Nix attrset.  Fields are omitted when they match
+    their defaults to keep files concise:
+
+    - ``rev`` is omitted when it equals ``"v{version}"`` (the standard
+      convention).  ``source-build-helpers.nix`` defaults ``rev`` to
+      ``"v{version}"`` when not present.
+    - ``owner`` and ``repo`` are omitted when empty (i.e. when they match
+      the package's well-known defaults).
+
+    Standard case::
 
         {
-          _version = "1.6.0";
-          rev  = "v1.6.0";
           hash = "sha256-…";
         }
 
-    ``_version`` is a self-identifying sentinel so that the file's content
-    carries its own version without relying on the filename convention.
-    ``owner`` and ``repo`` are emitted only when non-empty (i.e. when they
-    differ from the package's well-known defaults).
+    Non-standard tag (e.g. bitsandbytes bare tags, post-releases)::
+
+        {
+          rev  = "0.49.2";
+          hash = "sha256-…";
+        }
 
     Parameters
     ----------
@@ -477,19 +497,23 @@ def write_source_hash_file(output_dir: str, entry: SourceEntry) -> None:
     os.makedirs(output_dir, exist_ok=True)
     path = _source_hash_path(output_dir, entry.version)
 
+    # The default rev convention is "v{version}".  Only emit rev when it
+    # differs from this default.
+    default_rev = f"v{entry.version}"
+
     lines: list[str] = [
         "# WARNING: Auto-generated file. Do not edit manually!",
         "{",
-        f'  _version = "{entry.version}";',
     ]
     if entry.owner:
         lines.append(f'  owner = "{entry.owner}";')
     if entry.repo:
         lines.append(f'  repo  = "{entry.repo}";')
-    lines.append(f'  rev  = "{entry.tag}";')
+    if entry.tag != default_rev:
+        lines.append(f'  rev  = "{entry.tag}";')
     lines.append(f'  hash = "{entry.hash}";')
     lines.append("}")
-    lines.append("")   # trailing newline
+    lines.append("")  # trailing newline
 
     with open(path, "w") as fh:
         fh.write("\n".join(lines))

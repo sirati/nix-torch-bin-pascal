@@ -1,6 +1,6 @@
 # WARNING: Auto-generated file. Do not edit manually!
 # Source:  https://github.com/state-spaces/mamba/releases
-# To regenerate: nix-shell pkgs/mamba-ssm/generate-hashes.py [-- --skip-source --tag v2.3.0]
+# To regenerate: nix run .#default.mamba-ssm.gen-hashes [-- --skip-source --tag v2.3.0]
 #
 # Structure: cudaVersion -> torchCompat -> pyVer -> os -> arch
 #

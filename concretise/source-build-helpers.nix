@@ -112,6 +112,7 @@
       srcInfo          = import (sourceHashesDir + "/v${version}.nix");
       resolvedSrcOwner = srcInfo.owner or srcOwner;
       resolvedSrcRepo  = srcInfo.repo  or srcRepo;
+      resolvedRev      = srcInfo.rev or "v${version}";
 
       # ── Meta composition ──────────────────────────────────────────────────
       # Start from the upstream nixpkgs derivation's meta (if provided), then
@@ -155,7 +156,8 @@
       src = pkgs.fetchFromGitHub {
         owner           = resolvedSrcOwner;
         repo            = resolvedSrcRepo;
-        inherit (srcInfo) rev hash;
+        rev             = resolvedRev;
+        inherit (srcInfo) hash;
         inherit fetchSubmodules;
       };
 

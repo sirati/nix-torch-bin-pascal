@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import sys
 
-from common.versions import deduplicate_post_versions, parse_version_post
 from common.sort_keys import sort_version_key
-from nix_writer.schema import DimSpec
+from common.versions import deduplicate_post_versions, parse_version_post
 from nix_writer.organise import organize_wheels
 from nix_writer.per_version import write_binary_hashes_per_version
+from nix_writer.schema import DimSpec
+
 # force_overwrite=True  → always write (used when --tag is explicit)
 # force_overwrite=False → skip existing files (used on full-scan runs)
 from source_fetcher import (
@@ -157,16 +158,18 @@ def run_source_hashes(
     owner, repo = github_repo.split("/", 1)
     winning_tags = _winning_tags_from_tags(tags)
 
-    # When --tag is given explicitly, always overwrite the existing file so
-    # the caller can refresh a specific version.  On a full scan (no --tag),
-    # skip versions whose file already exists to avoid redundant network calls.
+    # When --tag is given explicitly or --regenerate is set, always overwrite
+    # existing files.  On a full scan (no --tag, no --regenerate), skip
+    # versions whose file already exists to avoid redundant network calls.
     explicit_tag = bool(getattr(args, "tag", None))
+    regenerate = bool(getattr(args, "regenerate", False))
+    force_overwrite = explicit_tag or regenerate
 
     # Partition: already-cached vs. needs fetching
-    to_fetch: dict[str, str] = {}   # base_version → winning_tag
+    to_fetch: dict[str, str] = {}  # base_version → winning_tag
     print(file=sys.stderr)
     for base_version in sorted(winning_tags.keys(), key=sort_version_key):
-        if not explicit_tag and source_hash_exists(source_hashes_dir, base_version):
+        if not force_overwrite and source_hash_exists(source_hashes_dir, base_version):
             print(
                 f"  source-hashes/v{base_version}.nix already exists — skipping.",
                 file=sys.stderr,
@@ -189,12 +192,13 @@ def run_source_hashes(
         # Ordered list of tags to pass to the batch fetcher (sorted by version
         # so progress output is deterministic).
         ordered_tags = [
-            to_fetch[base]
-            for base in sorted(to_fetch.keys(), key=sort_version_key)
+            to_fetch[base] for base in sorted(to_fetch.keys(), key=sort_version_key)
         ]
         try:
             batch_results = fetch_github_source_hashes_with_submodules_batch(
-                owner, repo, ordered_tags,
+                owner,
+                repo,
+                ordered_tags,
             )
         except Exception as exc:  # noqa: BLE001
             print(
@@ -216,7 +220,9 @@ def run_source_hashes(
             try:
                 if with_submodules:
                     sri_hash = fetch_github_source_hash_with_submodules(
-                        owner, repo, winning_tag,
+                        owner,
+                        repo,
+                        winning_tag,
                     )
                 else:
                     sri_hash = fetch_github_source_hash(owner, repo, winning_tag)
@@ -279,25 +285,33 @@ def run_all_hashes(
         whose ``fetchFromGitHub`` uses ``fetchSubmodules = true`` (e.g.
         flash-attn).
     """
-    from github_release_runner.tags import resolve_tags
     from github_release_runner.collector import collect_all_wheels
     from github_release_runner.missing_digests import update_missing_digests
+    from github_release_runner.tags import resolve_tags
 
     source_only = getattr(args, "source_only", False)
     skip_source = getattr(args, "skip_source", False)
 
     if source_only and skip_source:
-        print("Error: --source-only and --skip-source are mutually exclusive.", file=sys.stderr)
+        print(
+            "Error: --source-only and --skip-source are mutually exclusive.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     if source_only and source_hashes_dir is None:
-        print("Error: --source-only is not supported for this package (no source hashes).", file=sys.stderr)
+        print(
+            "Error: --source-only is not supported for this package (no source hashes).",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     # Determine whether to overwrite existing files.
-    # Default: overwrite when --tag is given (explicit refresh), skip otherwise.
+    # Default: overwrite when --tag is given (explicit refresh) or --regenerate
+    # is set, skip otherwise.
     if force_overwrite is None:
-        force_overwrite = bool(getattr(args, "tag", None))
+        regenerate = bool(getattr(args, "regenerate", False))
+        force_overwrite = bool(getattr(args, "tag", None)) or regenerate
 
     tags, too_old_tags = resolve_tags(github_repo, args)
 
@@ -305,19 +319,30 @@ def run_all_hashes(
         # Do not touch missing-digests.txt here — we fetched no wheels so we
         # have no new information about missing digests.  Any existing file
         # from a previous binary run must be preserved as-is.
-        run_source_hashes(tags, source_hashes_dir, github_repo, args, with_submodules=with_submodules)
+        run_source_hashes(
+            tags, source_hashes_dir, github_repo, args, with_submodules=with_submodules
+        )
         return
 
-    all_raw, missing_tags = collect_all_wheels(github_repo, tags, args.token, parse_wheel_fn)
+    all_raw, missing_tags = collect_all_wheels(
+        github_repo, tags, args.token, parse_wheel_fn
+    )
     # Use update_missing_digests so that partial runs (e.g. --tag v1.6.0) only
     # update entries for the tags actually processed, preserving existing entries
     # for all other tags.  On a full run tags == all_tags so the effect is the
     # same as a full overwrite.
     update_missing_digests(here, tags, missing_tags, too_old_tags)
     run_binary_hashes(
-        all_raw, binary_hashes_dir, schema, dimensions, version_spec, header_template,
+        all_raw,
+        binary_hashes_dir,
+        schema,
+        dimensions,
+        version_spec,
+        header_template,
         force_overwrite=force_overwrite,
     )
 
     if source_hashes_dir is not None:
-        run_source_hashes(tags, source_hashes_dir, github_repo, args, with_submodules=with_submodules)
+        run_source_hashes(
+            tags, source_hashes_dir, github_repo, args, with_submodules=with_submodules
+        )
