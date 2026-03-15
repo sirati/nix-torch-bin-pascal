@@ -187,8 +187,10 @@ def _generate_source_hash(tag: str, force: bool) -> None:
         print(f"  source-hashes/v{version}.nix already exists — skipping.")
         return
 
-    sri = fetch_github_source_hash_with_submodules(_GITHUB_OWNER, _GITHUB_REPO, tag)
-    entry = SourceEntry(version=version, tag=tag, hash=sri)
+    sri, commit = fetch_github_source_hash_with_submodules(
+        _GITHUB_OWNER, _GITHUB_REPO, tag
+    )
+    entry = SourceEntry(version=version, tag=tag, hash=sri, commit=commit)
     write_source_hash_file(_SOURCE_HASHES_DIR, entry)
 
 

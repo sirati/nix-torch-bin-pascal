@@ -12,6 +12,7 @@ Tests performed:
 """
 
 import sys
+
 import torch
 
 
@@ -36,9 +37,11 @@ def test_pytorch_info():
         print(f"  GPU count       : {torch.cuda.device_count()}")
         for i in range(torch.cuda.device_count()):
             props = torch.cuda.get_device_properties(i)
-            print(f"  GPU {i}  : {props.name}  "
-                  f"cc={props.major}.{props.minor}  "
-                  f"mem={props.total_memory / 1024**3:.1f} GiB")
+            print(
+                f"  GPU {i}  : {props.name}  "
+                f"cc={props.major}.{props.minor}  "
+                f"mem={props.total_memory / 1024**3:.1f} GiB"
+            )
     else:
         print("  (no CUDA – running in CPU-only mode)")
     return cuda_available
@@ -59,7 +62,7 @@ def test_tensor_ops(cuda_available: bool):
 
     # Autograd
     x = torch.randn(4, 4, requires_grad=True)
-    loss = (x ** 2).sum()
+    loss = (x**2).sum()
     loss.backward()
     assert x.grad is not None, "Gradient is None"
     print("  ✓ Autograd backward pass")
@@ -71,8 +74,9 @@ def test_tensor_ops(cuda_available: bool):
         c_gpu = torch.mm(a_gpu, b_gpu)
         assert c_gpu.device.type == "cuda"
         # Round-trip close to CPU result
-        assert torch.allclose(c_gpu.cpu(), c, atol=1e-4), \
+        assert torch.allclose(c_gpu.cpu(), c, atol=1e-4), (
             "GPU/CPU matmul results differ"
+        )
         print("  ✓ GPU matrix multiplication (128×128, matches CPU)")
 
         # Larger stress test
@@ -102,8 +106,10 @@ def test_neural_network(cuda_available: bool):
     x = torch.randn(16, 64, device=device)
     y_hat = model(x)
     assert y_hat.shape == (16, 1), f"Unexpected output shape {y_hat.shape}"
-    print(f"  ✓ Forward pass  input={tuple(x.shape)} → output={tuple(y_hat.shape)}"
-          f"  device={device}")
+    print(
+        f"  ✓ Forward pass  input={tuple(x.shape)} → output={tuple(y_hat.shape)}"
+        f"  device={device}"
+    )
 
     loss = y_hat.sum()
     loss.backward()
@@ -119,8 +125,9 @@ def test_causal_conv1d(cuda_available: bool):
     print_section("causal-conv1d")
 
     try:
-        from causal_conv1d import causal_conv1d_fn
         import causal_conv1d as _cc1d_mod
+        from causal_conv1d import causal_conv1d_fn
+
         print(f"  version : {getattr(_cc1d_mod, '__version__', 'unknown')}")
     except ImportError as exc:
         print(f"  SKIP – causal-conv1d not installed ({exc})")
@@ -149,11 +156,11 @@ def test_causal_conv1d(cuda_available: bool):
 
     # --- forward (no activation) ---
     out = causal_conv1d_fn(x, weight, bias=bias, activation=None)
-    assert out.shape == (batch, dim, seqlen), \
-        f"Unexpected shape {out.shape}"
+    assert out.shape == (batch, dim, seqlen), f"Unexpected shape {out.shape}"
     assert not out.isnan().any(), "Output contains NaN"
-    print(f"  ✓ forward pass (no activation)  "
-          f"shape={tuple(out.shape)}  dtype={out.dtype}")
+    print(
+        f"  ✓ forward pass (no activation)  shape={tuple(out.shape)}  dtype={out.dtype}"
+    )
 
     # --- forward with SiLU activation ---
     out_silu = causal_conv1d_fn(x, weight, bias=bias, activation="silu")
@@ -163,7 +170,7 @@ def test_causal_conv1d(cuda_available: bool):
 
     # --- float16 variant ---
     x16 = x.half()
-    w16 = weight.half()   # (dim, width) float16
+    w16 = weight.half()  # (dim, width) float16
     b16 = bias.half()
     out16 = causal_conv1d_fn(x16, w16, bias=b16, activation="silu")
     assert out16.dtype == torch.float16
@@ -172,14 +179,15 @@ def test_causal_conv1d(cuda_available: bool):
 
     # --- causal check: output at position t depends only on x[..., :t+1] ---
     x_mask = x.clone()
-    x_mask[0, :, seqlen // 2:] = 0.0           # zero out the second half
+    x_mask[0, :, seqlen // 2 :] = 0.0  # zero out the second half
     out_masked = causal_conv1d_fn(x_mask, weight, bias=bias, activation=None)
     # First position after the "reception field" must be identical
     check_t = width  # first position fully independent of the zeroed region
     diff = (out[0, :, :check_t] - out_masked[0, :, :check_t]).abs().max()
-    assert diff < 1e-5, \
-        f"Causal property violated: max diff={diff:.2e}"
-    print(f"  ✓ causal property verified  (max diff over first {check_t} steps = {diff:.2e})")
+    assert diff < 1e-5, f"Causal property violated: max diff={diff:.2e}"
+    print(
+        f"  ✓ causal property verified  (max diff over first {check_t} steps = {diff:.2e})"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -189,8 +197,9 @@ def test_flash_attn(cuda_available: bool):
     print_section("flash-attn")
 
     try:
-        from flash_attn import flash_attn_func
         import flash_attn as _fa_mod
+        from flash_attn import flash_attn_func
+
         print(f"  version : {getattr(_fa_mod, '__version__', 'unknown')}")
     except ImportError as exc:
         print(f"  SKIP – flash-attn not installed ({exc})")
@@ -208,7 +217,7 @@ def test_flash_attn(cuda_available: bool):
     # Returns  (batch, seqlen, nheads, headdim)
     # ------------------------------------------------------------------
     device = "cuda"
-    dtype = torch.float16          # flash-attn requires fp16 or bf16
+    dtype = torch.float16  # flash-attn requires fp16 or bf16
 
     batch, seqlen, nheads, headdim = 2, 512, 8, 64
 
@@ -218,8 +227,9 @@ def test_flash_attn(cuda_available: bool):
 
     # --- causal attention ---
     out = flash_attn_func(q, k, v, causal=True)
-    assert out.shape == (batch, seqlen, nheads, headdim), \
+    assert out.shape == (batch, seqlen, nheads, headdim), (
         f"Unexpected shape {out.shape}"
+    )
     assert not out.isnan().any(), "Output contains NaN"
     print(f"  ✓ causal attention  shape={tuple(out.shape)}  dtype={out.dtype}")
 
@@ -244,11 +254,13 @@ def test_flash_attn(cuda_available: bool):
     qs = q[:, :slen_small].float()
     ks = k[:, :slen_small].float()
     vs = v[:, :slen_small].float()
-    scale = headdim ** -0.5
+    scale = headdim**-0.5
     # naive: (b, h, s, s) attention
     scores = torch.einsum("bshd,bthd->bhst", qs, ks) * scale
     # causal mask
-    mask = torch.triu(torch.ones(slen_small, slen_small, device=device), diagonal=1).bool()
+    mask = torch.triu(
+        torch.ones(slen_small, slen_small, device=device), diagonal=1
+    ).bool()
     scores.masked_fill_(mask.unsqueeze(0).unsqueeze(0), float("-inf"))
     attn = torch.softmax(scores, dim=-1)
     naive_out = torch.einsum("bhst,bthd->bshd", attn, vs).half()
@@ -257,8 +269,9 @@ def test_flash_attn(cuda_available: bool):
     )
     max_diff = (flash_small.float() - naive_out.float()).abs().max().item()
     # fp16 accumulation allows ~1e-2 error
-    assert max_diff < 0.05, \
+    assert max_diff < 0.05, (
         f"Flash-attn deviates too much from naive attn: max_diff={max_diff:.4f}"
+    )
     print(f"  ✓ numerical check vs naive attention  max_diff={max_diff:.4f}")
 
 
@@ -270,6 +283,7 @@ def test_bitsandbytes(cuda_available: bool):
 
     try:
         import bitsandbytes as bnb
+
         print(f"  version : {getattr(bnb, '__version__', 'unknown')}")
     except ImportError as exc:
         print(f"  SKIP – bitsandbytes not installed ({exc})")
@@ -283,20 +297,124 @@ def test_bitsandbytes(cuda_available: bool):
     weight = torch.randn(128, 256, dtype=torch.float16, device="cuda")
     qweight4, quant_state4 = bnb.functional.quantize_4bit(weight)
     dequantized4 = bnb.functional.dequantize_4bit(qweight4, quant_state4)
-    assert dequantized4.shape == weight.shape, \
+    assert dequantized4.shape == weight.shape, (
         f"Dequantized shape mismatch: {dequantized4.shape} vs {weight.shape}"
+    )
     max_diff4 = (dequantized4.float() - weight.float()).abs().max().item()
-    print(f"  ✓ 4-bit quantize/dequantize  shape={tuple(dequantized4.shape)}  "
-          f"max_diff={max_diff4:.4f}")
+    print(
+        f"  ✓ 4-bit quantize/dequantize  shape={tuple(dequantized4.shape)}  "
+        f"max_diff={max_diff4:.4f}"
+    )
 
     # --- Linear4bit layer (replacement for Linear8bitLt in newer API) ---
     import torch.nn as nn
+
     linear_4bit = bnb.nn.Linear4bit(256, 128, compute_dtype=torch.float16).cuda()
     x = torch.randn(4, 256, dtype=torch.float16, device="cuda")
     out = linear_4bit(x)
     assert out.shape == (4, 128), f"Unexpected shape {out.shape}"
     assert not out.isnan().any(), "Output contains NaN"
     print(f"  ✓ Linear4bit forward pass  shape={tuple(out.shape)}  dtype={out.dtype}")
+
+
+# ---------------------------------------------------------------------------
+# 7. mamba-ssm
+# ---------------------------------------------------------------------------
+def test_mamba_ssm(cuda_available: bool):
+    print_section("mamba-ssm")
+
+    try:
+        import mamba_ssm
+
+        print(f"  version : {getattr(mamba_ssm, '__version__', 'unknown')}")
+    except ImportError as exc:
+        print(f"  SKIP – mamba-ssm not installed ({exc})")
+        return
+
+    if not cuda_available:
+        print("  SKIP – mamba-ssm requires CUDA")
+        return
+
+    from mamba_ssm import Mamba
+
+    # Mamba block: (batch, seqlen, dim) → (batch, seqlen, dim)
+    batch, seqlen, dim = 2, 128, 64
+    device = "cuda"
+    dtype = torch.float32
+
+    model = Mamba(d_model=dim, d_state=16, d_conv=4, expand=2).to(
+        device=device, dtype=dtype
+    )
+
+    x = torch.randn(batch, seqlen, dim, dtype=dtype, device=device)
+    out = model(x)
+    assert out.shape == (batch, seqlen, dim), f"Unexpected shape {out.shape}"
+    assert not out.isnan().any(), "Output contains NaN"
+    print(f"  ✓ Mamba forward pass  shape={tuple(out.shape)}  dtype={out.dtype}")
+
+    # Backward pass
+    loss = out.sum()
+    loss.backward()
+    grad_count = sum(1 for p in model.parameters() if p.grad is not None)
+    total_count = sum(1 for _ in model.parameters())
+    assert grad_count == total_count, f"Missing gradients: {grad_count}/{total_count}"
+    print(f"  ✓ Mamba backward pass  gradients={grad_count}/{total_count}")
+
+    # float16 variant
+    model_fp16 = Mamba(d_model=dim, d_state=16, d_conv=4, expand=2).to(
+        device=device, dtype=torch.float16
+    )
+    x_fp16 = x.half()
+    out_fp16 = model_fp16(x_fp16)
+    assert out_fp16.dtype == torch.float16
+    assert not out_fp16.isnan().any(), "float16 output contains NaN"
+    print(f"  ✓ Mamba float16 forward pass  shape={tuple(out_fp16.shape)}")
+
+
+# ---------------------------------------------------------------------------
+# 8. torchao
+# ---------------------------------------------------------------------------
+def test_torchao(cuda_available: bool):
+    print_section("torchao")
+
+    try:
+        import torchao
+
+        print(f"  version : {getattr(torchao, '__version__', 'unknown')}")
+    except ImportError as exc:
+        print(f"  SKIP – torchao not installed ({exc})")
+        return
+
+    if not cuda_available:
+        print("  SKIP – torchao requires CUDA")
+        return
+
+    import torch.nn as nn
+    from torchao.quantization import Int8WeightOnlyConfig, quantize_
+
+    # Create a simple model and quantize it with int8 weight-only
+    model = nn.Sequential(
+        nn.Linear(256, 128),
+        nn.GELU(),
+        nn.Linear(128, 64),
+    ).to(device="cuda", dtype=torch.bfloat16)
+
+    # Run baseline forward pass
+    x = torch.randn(4, 256, dtype=torch.bfloat16, device="cuda")
+    out_baseline = model(x)
+    assert out_baseline.shape == (4, 64)
+    print(f"  ✓ baseline forward pass  shape={tuple(out_baseline.shape)}")
+
+    # Quantize in-place
+    quantize_(model, Int8WeightOnlyConfig())
+    out_quantized = model(x)
+    assert out_quantized.shape == (4, 64), f"Unexpected shape {out_quantized.shape}"
+    assert not out_quantized.isnan().any(), "Quantized output contains NaN"
+    max_diff = (out_quantized.float() - out_baseline.float()).abs().max().item()
+    print(
+        f"  ✓ int8 weight-only quantized forward pass  shape={tuple(out_quantized.shape)}  "
+        f"max_diff={max_diff:.4f}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +427,8 @@ def main():
     test_causal_conv1d(cuda_available)
     test_flash_attn(cuda_available)
     test_bitsandbytes(cuda_available)
+    test_mamba_ssm(cuda_available)
+    test_torchao(cuda_available)
 
     print_section("Summary")
     print("  ✓ All applicable tests passed!")
@@ -323,6 +443,7 @@ if __name__ == "__main__":
         sys.exit(1)
     except Exception as exc:
         import traceback
+
         print(f"\n✗ Fatal error: {exc}", file=sys.stderr)
         traceback.print_exc()
         sys.exit(1)

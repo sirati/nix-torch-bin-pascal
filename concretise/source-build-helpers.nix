@@ -70,60 +70,60 @@
 # No file-level argument: all inputs arrive via overlayInfo inside the call.
 {
   buildSourcePackage =
-    { # Required
-      overlayInfo
-    , sourceHashesDir
+    {
+      # Required
+      overlayInfo,
+      sourceHashesDir,
 
       # Optional – meta
-    , extraMeta ? {}
+      extraMeta ? { },
 
       # Optional – build
-    , fetchSubmodules          ? false
-    , postPatch                ? ""
-    , preConfigure             ? ""
-    , extraBuildSystemPackages ? []
-    , extraBuildInputs         ? []
-    , extraDependencies        ? []
-    , forceBuildEnvVar         ? null
-    , useCudaHome              ? true
-    , extraEnv                 ? {}
+      fetchSubmodules ? false,
+      postPatch ? "",
+      preConfigure ? "",
+      extraBuildSystemPackages ? [ ],
+      extraBuildInputs ? [ ],
+      extraDependencies ? [ ],
+      forceBuildEnvVar ? null,
+      useCudaHome ? true,
+      extraEnv ? { },
 
       # Optional – checks
-    , pythonImportsCheck ? null
+      pythonImportsCheck ? null,
     }:
 
     let
       # ── Unpack overlayInfo ────────────────────────────────────────────────
-      pkgs         = overlayInfo.pkgs;
+      pkgs = overlayInfo.pkgs;
       cudaPackages = overlayInfo.cudaPackages;
-      version      = overlayInfo.version;
-      pname        = overlayInfo.pname;
-      srcOwner     = overlayInfo.srcOwner;
-      srcRepo      = overlayInfo.srcRepo;
-      basePkg      = overlayInfo.basePkg   or null;
-      changelog    = overlayInfo.changelog or null;
-      torch        = overlayInfo.torch     or null;
+      version = overlayInfo.version;
+      pname = overlayInfo.pname;
+      srcOwner = overlayInfo.srcOwner;
+      srcRepo = overlayInfo.srcRepo;
+      basePkg = overlayInfo.basePkg or null;
+      changelog = overlayInfo.changelog or null;
+      torch = overlayInfo.torch or null;
 
       inherit (pkgs) lib;
 
       # ── Source info ───────────────────────────────────────────────────────
       # Import the per-version hash file; allow the file to override the
       # owner/repo defaults supplied by high-level.nix.
-      srcInfo          = import (sourceHashesDir + "/v${version}.nix");
+      srcInfo = import (sourceHashesDir + "/v${version}.nix");
       resolvedSrcOwner = srcInfo.owner or srcOwner;
-      resolvedSrcRepo  = srcInfo.repo  or srcRepo;
-      resolvedRev      = srcInfo.rev or "v${version}";
+      resolvedSrcRepo = srcInfo.repo or srcRepo;
+      resolvedRev = srcInfo.commit or (srcInfo.rev or "v${version}");
 
       # ── Meta composition ──────────────────────────────────────────────────
       # Start from the upstream nixpkgs derivation's meta (if provided), then
       # overlay the source-build-specific fields, then apply caller overrides.
-      baseMeta = if basePkg != null then basePkg.meta else {};
+      baseMeta = if basePkg != null then basePkg.meta else { };
 
       meta =
         baseMeta
         // {
-          description =
-            "${baseMeta.description or pname} (built from source)";
+          description = "${baseMeta.description or pname} (built from source)";
           sourceProvenance = with lib.sourceTypes; [ fromSource ];
           # The upstream nixpkgs derivation may carry broken = true (e.g.
           # because its nixpkgs build requires CUDA in a way nixpkgs cannot
@@ -142,9 +142,10 @@
       # Override explicitly when the importable module name differs
       # (e.g. pname "flash-attention" must pass [ "flash_attn" ]).
       importsCheck =
-        if pythonImportsCheck != null
-        then pythonImportsCheck
-        else [ (builtins.replaceStrings [ "-" ] [ "_" ] pname) ];
+        if pythonImportsCheck != null then
+          pythonImportsCheck
+        else
+          [ (builtins.replaceStrings [ "-" ] [ "_" ] pname) ];
 
     in
     pkgs.python3Packages.buildPythonPackage {
@@ -154,9 +155,9 @@
       pyproject = true;
 
       src = pkgs.fetchFromGitHub {
-        owner           = resolvedSrcOwner;
-        repo            = resolvedSrcRepo;
-        rev             = resolvedRev;
+        owner = resolvedSrcOwner;
+        repo = resolvedSrcRepo;
+        rev = resolvedRev;
         inherit (srcInfo) hash;
         inherit fetchSubmodules;
       };
@@ -172,7 +173,8 @@
         pkgs.python3Packages.setuptools
         pkgs.python3Packages.ninja
         cudaPackages.cuda_nvcc
-      ] ++ extraBuildSystemPackages;
+      ]
+      ++ extraBuildSystemPackages;
 
       nativeBuildInputs = [
         pkgs.which
@@ -181,13 +183,15 @@
       # Standard CUDA libraries required by every extension in this repo.
       # libcurand is package-specific (flash-attn only); callers pass it
       # via extraBuildInputs.
-      buildInputs = (with cudaPackages; [
-        cuda_cudart   # cuda_runtime.h, -lcudart
-        cuda_cccl     # thrust / cub headers
-        libcusparse   # cusparse.h
-        libcusolver   # cusolverDn.h
-        libcublas     # cublas_v2.h, -lcublas
-      ]) ++ extraBuildInputs;
+      buildInputs =
+        (with cudaPackages; [
+          cuda_cudart # cuda_runtime.h, -lcudart
+          cuda_cccl # thrust / cub headers
+          libcusparse # cusparse.h
+          libcusolver # cusolverDn.h
+          libcublas # cublas_v2.h, -lcublas
+        ])
+        ++ extraBuildInputs;
 
       # torch is the first runtime dependency when present; callers append extras.
       dependencies = lib.optional (torch != null) torch ++ extraDependencies;

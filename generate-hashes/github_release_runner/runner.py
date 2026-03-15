@@ -209,26 +209,35 @@ def run_source_hashes(
 
         for base_version in sorted(to_fetch.keys(), key=sort_version_key):
             winning_tag = to_fetch[base_version]
-            sri_hash = batch_results[winning_tag]
+            sri_hash, commit = batch_results[winning_tag]
             write_source_hash_file(
                 source_hashes_dir,
-                SourceEntry(version=base_version, tag=winning_tag, hash=sri_hash),
+                SourceEntry(
+                    version=base_version, tag=winning_tag, hash=sri_hash, commit=commit
+                ),
             )
     else:
         for base_version in sorted(to_fetch.keys(), key=sort_version_key):
             winning_tag = to_fetch[base_version]
             try:
                 if with_submodules:
-                    sri_hash = fetch_github_source_hash_with_submodules(
+                    sri_hash, commit = fetch_github_source_hash_with_submodules(
                         owner,
                         repo,
                         winning_tag,
                     )
                 else:
-                    sri_hash = fetch_github_source_hash(owner, repo, winning_tag)
+                    sri_hash, commit = fetch_github_source_hash(
+                        owner, repo, winning_tag
+                    )
                 write_source_hash_file(
                     source_hashes_dir,
-                    SourceEntry(version=base_version, tag=winning_tag, hash=sri_hash),
+                    SourceEntry(
+                        version=base_version,
+                        tag=winning_tag,
+                        hash=sri_hash,
+                        commit=commit,
+                    ),
                 )
             except Exception as exc:  # noqa: BLE001
                 print(

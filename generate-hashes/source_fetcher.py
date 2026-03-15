@@ -108,6 +108,7 @@ class SourceEntry:
     version: str
     tag: str
     hash: str
+    commit: str = field(default="")
     owner: str = field(default="")
     repo: str = field(default="")
 
@@ -117,12 +118,40 @@ class SourceEntry:
 # ---------------------------------------------------------------------------
 
 
-def fetch_github_source_hash(owner: str, repo: str, tag: str) -> str:
+def _resolve_tag_to_commit(owner: str, repo: str, tag: str) -> str:
     """
-    Compute and return the Nix SRI NAR hash for the GitHub archive at *tag*.
+    Resolve a git tag to its commit SHA via ``git ls-remote``.
 
-    The returned string is in SRI format, e.g.
-    ``"sha256-hFaF/oMdScDpdq+zq8WppWe9GONWppEEx2pIcnaALiI="``.
+    Returns the full 40-character commit SHA, or an empty string if the
+    tag cannot be resolved (e.g. network error).
+    """
+    url = f"https://github.com/{owner}/{repo}.git"
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", url, f"refs/tags/{tag}"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        for line in result.stdout.strip().splitlines():
+            sha, _ref = line.split(None, 1)
+            return sha
+    except (subprocess.CalledProcessError, ValueError):
+        pass
+    return ""
+
+
+def fetch_github_source_hash(owner: str, repo: str, tag: str) -> tuple[str, str]:
+    """
+    Compute and return the Nix SRI NAR hash for the GitHub archive at *tag*,
+    along with the resolved commit SHA.
+
+    Returns
+    -------
+    tuple[str, str]
+        ``(sri_hash, commit_sha)`` — the SRI hash string and the full commit
+        SHA that the tag resolves to.  ``commit_sha`` may be empty if the
+        tag could not be resolved via ``git ls-remote``.
 
     This is the value to use for the ``hash`` attribute of
     ``fetchFromGitHub { owner; repo; tag; hash; }`` (without submodules).
@@ -143,6 +172,12 @@ def fetch_github_source_hash(owner: str, repo: str, tag: str) -> str:
     """
     url = f"https://github.com/{owner}/{repo}/archive/refs/tags/{tag}.tar.gz"
     print(f"  Fetching NAR hash for {owner}/{repo} @ {tag} …", file=sys.stderr)
+
+    # Resolve the tag to a commit SHA before fetching the tarball.
+    commit = _resolve_tag_to_commit(owner, repo, tag)
+    if commit:
+        print(f"    commit: {commit}", file=sys.stderr)
+
     try:
         result = subprocess.run(
             [
@@ -168,7 +203,7 @@ def fetch_github_source_hash(owner: str, repo: str, tag: str) -> str:
                 f"  stderr: {result.stderr.strip()}"
             )
         print(f"    → {sri}", file=sys.stderr)
-        return sri
+        return sri, commit
     except subprocess.CalledProcessError as exc:
         print(
             f"Error: `nix store prefetch-file` failed for "
@@ -185,10 +220,14 @@ def fetch_github_source_hash(owner: str, repo: str, tag: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def fetch_github_source_hash_with_submodules(owner: str, repo: str, tag: str) -> str:
+def fetch_github_source_hash_with_submodules(
+    owner: str,
+    repo: str,
+    tag: str,
+) -> tuple[str, str]:
     """
     Compute and return the Nix SRI NAR hash for a git clone of *tag* that
-    includes all submodules.
+    includes all submodules, along with the resolved commit SHA.
 
     This is the value to use for the ``hash`` attribute of::
 
@@ -210,8 +249,8 @@ def fetch_github_source_hash_with_submodules(owner: str, repo: str, tag: str) ->
 
     Returns
     -------
-    str
-        SRI hash string, e.g. ``"sha256-6I1O4E5K5IdbpzrXFHK06QVcOE8zuVkFE338ffk6N8M="``.
+    tuple[str, str]
+        ``(sri_hash, commit_sha)`` — the SRI hash and the resolved commit SHA.
 
     Raises
     ------
@@ -241,11 +280,16 @@ def fetch_github_source_hash_with_submodules(owner: str, repo: str, tag: str) ->
         )
         data = json.loads(result.stdout)
 
+        # nix-prefetch-github emits a "rev" field with the resolved commit SHA.
+        commit = data.get("rev", "")
+
         # nix-prefetch-github >= 4.0 emits a "hash" field in SRI format.
         sri = data.get("hash", "")
         if sri:
+            if commit:
+                print(f"    commit: {commit}", file=sys.stderr)
             print(f"    → {sri}", file=sys.stderr)
-            return sri
+            return sri, commit
 
         # Older versions emit a base32 "sha256" field; convert to SRI.
         sha256_b32 = data.get("sha256", "")
@@ -257,8 +301,10 @@ def fetch_github_source_hash_with_submodules(owner: str, repo: str, tag: str) ->
                 check=True,
             )
             sri = conv.stdout.strip()
+            if commit:
+                print(f"    commit: {commit}", file=sys.stderr)
             print(f"    → {sri}  (converted from base32)", file=sys.stderr)
-            return sri
+            return sri, commit
 
         raise RuntimeError(
             f"`nix-prefetch-github --fetch-submodules` returned no hash for "
@@ -301,9 +347,10 @@ def fetch_github_source_hashes_with_submodules_batch(
     owner: str,
     repo: str,
     tags: list[str],
-) -> dict[str, str]:
+) -> dict[str, tuple[str, str]]:
     """
-    Clone *owner/repo* **once** and return ``{tag: sri_hash}`` for every tag.
+    Clone *owner/repo* **once** and return ``{tag: (sri_hash, commit)}`` for
+    every tag.
 
     This is the multi-tag optimisation for packages that use
     ``fetchFromGitHub { fetchSubmodules = true; }``.
@@ -321,14 +368,15 @@ def fetch_github_source_hashes_with_submodules_batch(
           ``<mirror>/.git/modules/``; tags that share a submodule commit (very
           common, e.g. the cutlass pin in flash-attn) skip the network download
           for that submodule entirely.
-       c. Copy the full tree to a scratch directory, excluding every ``.git``
+       c. ``git rev-parse HEAD`` — captures the exact commit SHA for the tag.
+       d. Copy the full tree to a scratch directory, excluding every ``.git``
           directory (exactly what ``fetchgit`` does before hashing).
-       d. ``nix hash path --sri --type sha256 <scratch>`` — computes the NAR
+       e. ``nix hash path --sri --type sha256 <scratch>`` — computes the NAR
           hash.  Nix's NAR format is content + permissions only; it does *not*
           include file timestamps, so no timestamp normalisation is required.
           This hash is identical to what ``fetchFromGitHub { fetchSubmodules =
           true; }`` stores in the Nix store.
-       e. Delete the scratch copy; proceed to the next tag.
+       f. Delete the scratch copy; proceed to the next tag.
 
     .. note::
         Submodule data for *new* submodule commits is still fetched from the
@@ -351,9 +399,9 @@ def fetch_github_source_hashes_with_submodules_batch(
 
     Returns
     -------
-    dict[str, str]
-        Mapping from tag to SRI hash, e.g.
-        ``{"v2.8.3": "sha256-6I1O4E5K5IdbpzrXFHK06QVcOE8zuVkFE338ffk6N8M="}``.
+    dict[str, tuple[str, str]]
+        Mapping from tag to ``(sri_hash, commit_sha)``, e.g.
+        ``{"v2.8.3": ("sha256-6I1O…", "abc123…")}``.
 
     Raises
     ------
@@ -364,7 +412,7 @@ def fetch_github_source_hashes_with_submodules_batch(
         return {}
 
     url = f"https://github.com/{owner}/{repo}.git"
-    results: dict[str, str] = {}
+    results: dict[str, tuple[str, str]] = {}
 
     with tempfile.TemporaryDirectory(prefix="nix-src-batch-") as tmpdir:
         mirror_dir = os.path.join(tmpdir, "mirror")
@@ -394,11 +442,39 @@ def fetch_github_source_hashes_with_submodules_batch(
                 file=sys.stderr,
             )
 
+            # De-init all submodules from the previous tag so that
+            # submodule path changes between tags (e.g. csrc/flash_attn/cutlass
+            # → csrc/cutlass) are handled correctly.  Without this, old
+            # submodule directories linger as untracked files and pollute the
+            # NAR hash.
+            subprocess.run(
+                ["git", "-C", mirror_dir, "submodule", "deinit", "--all", "-f"],
+                check=True,
+            )
+
             # Check out the main repository at this tag.
             subprocess.run(
                 ["git", "-C", mirror_dir, "checkout", "--force", tag],
                 check=True,
             )
+
+            # Remove all untracked files and directories left over from the
+            # previous tag (e.g. old submodule working trees, build artefacts).
+            # This ensures the working tree matches a fresh clone of this tag.
+            subprocess.run(
+                ["git", "-C", mirror_dir, "clean", "-fdx"],
+                check=True,
+            )
+
+            # Resolve the exact commit SHA for this tag.
+            rev_result = subprocess.run(
+                ["git", "-C", mirror_dir, "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            commit = rev_result.stdout.strip()
+            print(f"    commit: {commit}", file=sys.stderr)
 
             # Fetch and check out all submodules.  git caches each submodule's
             # objects under <mirror>/.git/modules/ so commits already seen for
@@ -438,7 +514,7 @@ def fetch_github_source_hashes_with_submodules_batch(
                 )
 
             print(f"    → {sri}", file=sys.stderr)
-            results[tag] = sri
+            results[tag] = (sri, commit)
 
             # Clean the scratch dir now to free disk space before the next tag.
             shutil.rmtree(scratch_dir, ignore_errors=True)
@@ -506,12 +582,14 @@ def write_source_hash_file(output_dir: str, entry: SourceEntry) -> None:
         "{",
     ]
     if entry.owner:
-        lines.append(f'  owner = "{entry.owner}";')
+        lines.append(f'  owner  = "{entry.owner}";')
     if entry.repo:
-        lines.append(f'  repo  = "{entry.repo}";')
+        lines.append(f'  repo   = "{entry.repo}";')
     if entry.tag != default_rev:
-        lines.append(f'  rev  = "{entry.tag}";')
-    lines.append(f'  hash = "{entry.hash}";')
+        lines.append(f'  rev    = "{entry.tag}";')
+    if entry.commit:
+        lines.append(f'  commit = "{entry.commit}";')
+    lines.append(f'  hash   = "{entry.hash}";')
     lines.append("}")
     lines.append("")  # trailing newline
 

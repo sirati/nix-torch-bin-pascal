@@ -7,20 +7,24 @@
 { pkgs, pytorchScope }:
 
 let
-  concretise        = import ./concretise;
+  concretise = import ./concretise;
   testScriptContent = builtins.readFile ./test-torch.py;
 
   # ── Example: validates the pattern shown in example/flake.nix ────────────
   exampleResult = import ./example {
     inherit pkgs;
-    torchPackages = pytorchScope // { concretise = concretise; };
+    torchPackages = pytorchScope // {
+      concretise = concretise;
+    };
   };
 
   makeTestApp = envPkg: name: {
-    type    = "app";
-    program = toString (pkgs.writeShellScript "run-tests-${name}" ''
-      exec ${envPkg}/bin/python3 ${pkgs.writeText "test-torch.py" testScriptContent}
-    '');
+    type = "app";
+    program = toString (
+      pkgs.writeShellScript "run-tests-${name}" ''
+        exec ${envPkg}/bin/python3 ${pkgs.writeText "test-torch.py" testScriptContent}
+      ''
+    );
   };
 
   # ── Default concrete environment ─────────────────────────────────────────
@@ -34,20 +38,20 @@ let
       pytorchScope."flash-attn"
       pytorchScope."causal-conv1d"
     ];
-    python                  = "3.13";
-    cuda                    = "12.8";
-    torch                   = "2.10";
-    pascal                  = true;
+    python = "3.13";
+    cuda = "12.8";
+    torch = "2.10";
+    pascal = true;
     allowBuildingFromSource = true;
   };
 
   # ── Test: torch-only, Python 3.13, CUDA 12.8 ─────────────────────────────
   testTorchCu128Result = concretise {
     inherit pkgs;
-    mlPackages              = [ pytorchScope.torch ];
-    python                  = "3.13";
-    cuda                    = "12.8";
-    torch                   = "2.10";
+    mlPackages = [ pytorchScope.torch ];
+    python = "3.13";
+    cuda = "12.8";
+    torch = "2.10";
     allowBuildingFromSource = false;
   };
 
@@ -60,9 +64,9 @@ let
       pytorchScope.torch
       pytorchScope."causal-conv1d"
     ];
-    python                  = "3.13";
-    cuda                    = "12.8";
-    torch                   = "2.8";
+    python = "3.13";
+    cuda = "12.8";
+    torch = "2.8";
     allowBuildingFromSource = false;
   };
 
@@ -75,9 +79,9 @@ let
       pytorchScope.torch
       pytorchScope."causal-conv1d"
     ];
-    python                  = "3.13";
-    cuda                    = "12.8";
-    torch                   = "2.10";
+    python = "3.13";
+    cuda = "12.8";
+    torch = "2.10";
     allowBuildingFromSource = true;
   };
 
@@ -89,9 +93,9 @@ let
       pytorchScope.torch
       pytorchScope."flash-attn"
     ];
-    python                  = "3.13";
-    cuda                    = "12.8";
-    torch                   = "2.8";
+    python = "3.13";
+    cuda = "12.8";
+    torch = "2.8";
     allowBuildingFromSource = false;
   };
 
@@ -104,9 +108,9 @@ let
       pytorchScope.torch
       pytorchScope."flash-attn"
     ];
-    python                  = "3.13";
-    cuda                    = "12.8";
-    torch                   = "2.10";
+    python = "3.13";
+    cuda = "12.8";
+    torch = "2.10";
     allowBuildingFromSource = true;
   };
 
@@ -119,11 +123,13 @@ let
       pytorchScope.torch
       pytorchScope."flash-attn"
       pytorchScope."causal-conv1d"
+      pytorchScope."mamba-ssm"
       pytorchScope.bitsandbytes
+      pytorchScope.torchao
     ];
-    python                  = "3.13";
-    cuda                    = "12.8";
-    torch                   = "2.10";
+    python = "3.13";
+    cuda = "12.8";
+    torch = "2.10";
     allowBuildingFromSource = true;
   };
 
@@ -136,9 +142,9 @@ let
       pytorchScope."causal-conv1d"
       pytorchScope."mamba-ssm"
     ];
-    python                  = "3.13";
-    cuda                    = "12.8";
-    torch                   = "2.7";
+    python = "3.13";
+    cuda = "12.8";
+    torch = "2.7";
     allowBuildingFromSource = false;
   };
 
@@ -152,19 +158,19 @@ let
       pytorchScope."causal-conv1d"
       pytorchScope."mamba-ssm"
     ];
-    python                  = "3.13";
-    cuda                    = "12.8";
-    torch                   = "2.10";
+    python = "3.13";
+    cuda = "12.8";
+    torch = "2.10";
     allowBuildingFromSource = true;
   };
 
   # ── Test: torch-only, Python 3.13, CUDA 12.6 ─────────────────────────────
   testTorchCu126Result = concretise {
     inherit pkgs;
-    mlPackages              = [ pytorchScope.torch ];
-    python                  = "3.13";
-    cuda                    = "12.6";
-    torch                   = "2.10";
+    mlPackages = [ pytorchScope.torch ];
+    python = "3.13";
+    cuda = "12.6";
+    torch = "2.10";
     allowBuildingFromSource = false;
   };
 
@@ -176,9 +182,9 @@ let
       pytorchScope.torch
       pytorchScope."flash-attn"
     ];
-    python                  = "3.13";
-    cuda                    = "12.6";
-    torch                   = "2.8";
+    python = "3.13";
+    cuda = "12.6";
+    torch = "2.8";
     allowBuildingFromSource = false;
   };
 
@@ -191,19 +197,19 @@ let
       pytorchScope."causal-conv1d"
       pytorchScope.bitsandbytes
     ];
-    python                  = "3.13";
-    cuda                    = "12.6";
-    torch                   = "2.10";
+    python = "3.13";
+    cuda = "12.6";
+    torch = "2.10";
     allowBuildingFromSource = true;
   };
 
   # ── Test: torch-only, Python 3.13, CUDA 13.0 ─────────────────────────────
   testTorchCu130Result = concretise {
     inherit pkgs;
-    mlPackages              = [ pytorchScope.torch ];
-    python                  = "3.13";
-    cuda                    = "13.0";
-    torch                   = "2.10";
+    mlPackages = [ pytorchScope.torch ];
+    python = "3.13";
+    cuda = "13.0";
+    torch = "2.10";
     allowBuildingFromSource = false;
   };
 
@@ -216,71 +222,73 @@ let
       pytorchScope."causal-conv1d"
       pytorchScope.bitsandbytes
     ];
-    python                  = "3.13";
-    cuda                    = "13.0";
-    torch                   = "2.10";
+    python = "3.13";
+    cuda = "13.0";
+    torch = "2.10";
     allowBuildingFromSource = true;
   };
 
 in
 {
   packages = {
-    default                                    = defaultResult.env;
-    test-example                               = exampleResult.env;
-    test-torch-py313-cu128                     = testTorchCu128Result.env;
-    test-causal-conv1d-py313-cu128             = testCausalCu128Result.env;
+    default = defaultResult.env;
+    test-example = exampleResult.env;
+    test-torch-py313-cu128 = testTorchCu128Result.env;
+    test-causal-conv1d-py313-cu128 = testCausalCu128Result.env;
     test-causal-conv1d-from-source-py313-cu128 = testCausalCu128FromSourceResult.env;
-    test-flash-attn-bin-py313-cu128            = testFlashAttnBinCu128Result.env;
-    test-flash-attn-source-py313-cu128         = testFlashAttnSourceCu128Result.env;
-    test-all-py313-cu128                       = testAllCu128Result.env;
-    test-mamba-py313-cu128                     = testMambaCu128Result.env;
-    test-mamba-source-py313-cu128              = testMambaSourceCu128Result.env;
-    test-torch-py313-cu126                     = testTorchCu126Result.env;
-    test-flash-attn-bin-py313-cu126            = testFlashAttnBinCu126Result.env;
-    test-all-py313-cu126                       = testAllCu126Result.env;
-    test-torch-py313-cu130                     = testTorchCu130Result.env;
-    test-all-py313-cu130                       = testAllCu130Result.env;
+    test-flash-attn-bin-py313-cu128 = testFlashAttnBinCu128Result.env;
+    test-flash-attn-source-py313-cu128 = testFlashAttnSourceCu128Result.env;
+    test-all-py313-cu128 = testAllCu128Result.env;
+    test-mamba-py313-cu128 = testMambaCu128Result.env;
+    test-mamba-source-py313-cu128 = testMambaSourceCu128Result.env;
+    test-torch-py313-cu126 = testTorchCu126Result.env;
+    test-flash-attn-bin-py313-cu126 = testFlashAttnBinCu126Result.env;
+    test-all-py313-cu126 = testAllCu126Result.env;
+    test-torch-py313-cu130 = testTorchCu130Result.env;
+    test-all-py313-cu130 = testAllCu130Result.env;
   };
 
   devShells = {
-    default                                    = defaultResult.devShell;
-    test-example                               = exampleResult.devShell;
-    test-torch-py313-cu128                     = testTorchCu128Result.devShell;
-    test-causal-conv1d-py313-cu128             = testCausalCu128Result.devShell;
+    default = defaultResult.devShell;
+    test-example = exampleResult.devShell;
+    test-torch-py313-cu128 = testTorchCu128Result.devShell;
+    test-causal-conv1d-py313-cu128 = testCausalCu128Result.devShell;
     test-causal-conv1d-from-source-py313-cu128 = testCausalCu128FromSourceResult.devShell;
-    test-flash-attn-bin-py313-cu128            = testFlashAttnBinCu128Result.devShell;
-    test-flash-attn-source-py313-cu128         = testFlashAttnSourceCu128Result.devShell;
-    test-all-py313-cu128                       = testAllCu128Result.devShell;
-    test-mamba-py313-cu128                     = testMambaCu128Result.devShell;
-    test-mamba-source-py313-cu128              = testMambaSourceCu128Result.devShell;
-    test-torch-py313-cu126                     = testTorchCu126Result.devShell;
-    test-flash-attn-bin-py313-cu126            = testFlashAttnBinCu126Result.devShell;
-    test-all-py313-cu126                       = testAllCu126Result.devShell;
-    test-torch-py313-cu130                     = testTorchCu130Result.devShell;
-    test-all-py313-cu130                       = testAllCu130Result.devShell;
+    test-flash-attn-bin-py313-cu128 = testFlashAttnBinCu128Result.devShell;
+    test-flash-attn-source-py313-cu128 = testFlashAttnSourceCu128Result.devShell;
+    test-all-py313-cu128 = testAllCu128Result.devShell;
+    test-mamba-py313-cu128 = testMambaCu128Result.devShell;
+    test-mamba-source-py313-cu128 = testMambaSourceCu128Result.devShell;
+    test-torch-py313-cu126 = testTorchCu126Result.devShell;
+    test-flash-attn-bin-py313-cu126 = testFlashAttnBinCu126Result.devShell;
+    test-all-py313-cu126 = testAllCu126Result.devShell;
+    test-torch-py313-cu130 = testTorchCu130Result.devShell;
+    test-all-py313-cu130 = testAllCu130Result.devShell;
   };
 
   apps = {
-    default                                    = makeTestApp defaultResult.env                    "default";
-    test-example                               = makeTestApp exampleResult.env                    "test-example";
-    test-torch-py313-cu128                     = makeTestApp testTorchCu128Result.env             "test-torch-py313-cu128";
-    test-causal-conv1d-py313-cu128             = makeTestApp testCausalCu128Result.env            "test-causal-conv1d-py313-cu128";
-    test-causal-conv1d-from-source-py313-cu128 = makeTestApp testCausalCu128FromSourceResult.env  "test-causal-conv1d-from-source-py313-cu128";
-    test-flash-attn-bin-py313-cu128            = makeTestApp testFlashAttnBinCu128Result.env      "test-flash-attn-bin-py313-cu128";
-    test-flash-attn-source-py313-cu128         = makeTestApp testFlashAttnSourceCu128Result.env   "test-flash-attn-source-py313-cu128";
-    test-all-py313-cu128                       = makeTestApp testAllCu128Result.env               "test-all-py313-cu128";
-    test-mamba-py313-cu128                     = makeTestApp testMambaCu128Result.env             "test-mamba-py313-cu128";
-    test-mamba-source-py313-cu128              = makeTestApp testMambaSourceCu128Result.env       "test-mamba-source-py313-cu128";
-    test-torch-py313-cu126                     = makeTestApp testTorchCu126Result.env             "test-torch-py313-cu126";
-    test-flash-attn-bin-py313-cu126            = makeTestApp testFlashAttnBinCu126Result.env      "test-flash-attn-bin-py313-cu126";
-    test-all-py313-cu126                       = makeTestApp testAllCu126Result.env               "test-all-py313-cu126";
-    test-torch-py313-cu130                     = makeTestApp testTorchCu130Result.env             "test-torch-py313-cu130";
-    test-all-py313-cu130                       = makeTestApp testAllCu130Result.env               "test-all-py313-cu130";
-    test-mamba-autotune-py313-cu128            = {
-      type    = "app";
-      program = toString (pkgs.writeShellScript "run-autotune-py313-cu128" ''
-        exec ${testMambaSourceCu128Result.env}/bin/python3 -m mamba_ssm_autotune "$@"
-      '');
+    default = makeTestApp defaultResult.env "default";
+    test-example = makeTestApp exampleResult.env "test-example";
+    test-torch-py313-cu128 = makeTestApp testTorchCu128Result.env "test-torch-py313-cu128";
+    test-causal-conv1d-py313-cu128 = makeTestApp testCausalCu128Result.env "test-causal-conv1d-py313-cu128";
+    test-causal-conv1d-from-source-py313-cu128 = makeTestApp testCausalCu128FromSourceResult.env "test-causal-conv1d-from-source-py313-cu128";
+    test-flash-attn-bin-py313-cu128 = makeTestApp testFlashAttnBinCu128Result.env "test-flash-attn-bin-py313-cu128";
+    test-flash-attn-source-py313-cu128 = makeTestApp testFlashAttnSourceCu128Result.env "test-flash-attn-source-py313-cu128";
+    test-all-py313-cu128 = makeTestApp testAllCu128Result.env "test-all-py313-cu128";
+    test-mamba-py313-cu128 = makeTestApp testMambaCu128Result.env "test-mamba-py313-cu128";
+    test-mamba-source-py313-cu128 = makeTestApp testMambaSourceCu128Result.env "test-mamba-source-py313-cu128";
+    test-torch-py313-cu126 = makeTestApp testTorchCu126Result.env "test-torch-py313-cu126";
+    test-flash-attn-bin-py313-cu126 = makeTestApp testFlashAttnBinCu126Result.env "test-flash-attn-bin-py313-cu126";
+    test-all-py313-cu126 = makeTestApp testAllCu126Result.env "test-all-py313-cu126";
+    test-torch-py313-cu130 = makeTestApp testTorchCu130Result.env "test-torch-py313-cu130";
+    test-all-py313-cu130 = makeTestApp testAllCu130Result.env "test-all-py313-cu130";
+    test-mamba-autotune-py313-cu128 = {
+      type = "app";
+      program = toString (
+        pkgs.writeShellScript "run-autotune-py313-cu128" ''
+          exec ${testMambaSourceCu128Result.env}/bin/python3 -m mamba_ssm_autotune "$@"
+        ''
+      );
     };
   };
 }

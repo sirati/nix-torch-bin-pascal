@@ -1,5 +1,6 @@
 # WARNING: Auto-generated file. Do not edit manually!
 {
-  rev  = "v2.5.1.post1";
-  hash = "sha256-9C8h8ELx9cqYt+RxTJowSfFIg/3NEuV/Au73AsyunpA=";
+  rev    = "v2.5.1.post1";
+  commit = "dc72d960a7fc903ee34b8df84a056620b354ec47";
+  hash   = "sha256-7/9DJuzXGOlkIOYFclF9skzlAh8sHh5uRdBNOCMCjzs=";
 }

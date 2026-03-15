@@ -1,6 +1,6 @@
 # WARNING: Auto-generated file. Do not edit manually!
 # Source:  https://download.pytorch.org/whl/cu130/torch/
-# To regenerate: nix-shell torch/generate-hashes.py [-- --cuda cu130]
+# To regenerate: nix run .#default.torch.gen-hashes [-- --cuda cu130]
 #
 # Structure: version -> pythonVersion -> os -> arch
 #   pythonVersion: py310, py311, py312, py313, py313-freethreaded, py314, py314-freethreaded

@@ -1,4 +1,5 @@
 # WARNING: Auto-generated file. Do not edit manually!
 {
-  hash = "sha256-OhaXhi0U8QdFNoIz5TU1d6uKiD/+Hl22d2G88t4Fir8=";
+  commit = "c60851a8253257eb970e06a022c82517a8033e8c";
+  hash   = "sha256-vZEcaHtBmLs+BVWiGvnyiDoZBUquXJGWibRpMwtvb7Q=";
 }
