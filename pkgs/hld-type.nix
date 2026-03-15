@@ -75,8 +75,7 @@ let
 
     originType = {
       description =
-        ''string – origin type of the package; allowed values: ''
-        + ''"torch-website", "github-releases"'';
+        "string – origin type of the package; allowed values: " + ''"torch-website", "github-releases"'';
     };
 
     pname = {
@@ -170,7 +169,7 @@ let
         "attrset – static version bounds applied to dependencies during version "
         + "selection.  Each key is a dep packageName; each value is "
         + "{ minVersion?, maxVersion? }.  Defaults to {} (no constraints).";
-      default = {};
+      default = { };
     };
 
     cudaAgnostic = {
@@ -194,7 +193,7 @@ let
 
     data = {
       description = "attrset – arbitrary package-specific metadata";
-      default     = {};
+      default = { };
     };
 
     generateHashesScript = {
@@ -207,6 +206,17 @@ let
         + "otherwise null (no app exposed).";
       dynamicDefault = true;
     };
+
+    testScript = {
+      description =
+        "path – path to manual_debug.py test script for this package; "
+        + "when non-null the flake exposes a test app at "
+        + "apps.<system>.<packageName>.test and concretise includes "
+        + "it in result.testScripts for automatic discovery.  Defaults to "
+        + "pkgs/<packageName>/manual_debug.py if that file exists, "
+        + "otherwise null.";
+      dynamicDefault = true;
+    };
   };
 
   # ── Derived field lists ───────────────────────────────────────────────────
@@ -217,15 +227,15 @@ let
   #   • a static `default`
   #   • dynamicDefault = true  (computed from packageName at validate time)
   #   • conditionalDefault = true  (computed from originType at validate time)
-  requiredFieldNames = builtins.filter
-    (name:
-      let spec = fieldSpecs.${name};
-      in
-      !(builtins.hasAttr "default"         spec)
-      && !(spec.dynamicDefault    or false)
-      && !(spec.conditionalDefault or false)
-    )
-    allFieldNames;
+  requiredFieldNames = builtins.filter (
+    name:
+    let
+      spec = fieldSpecs.${name};
+    in
+    !(builtins.hasAttr "default" spec)
+    && !(spec.dynamicDefault or false)
+    && !(spec.conditionalDefault or false)
+  ) allFieldNames;
 
   # ── validate ──────────────────────────────────────────────────────────────
   #
@@ -245,20 +255,17 @@ let
   #          fields are absent
   #   5. Stamps the result with _isHighLevelDerivation = true and
   #      packageName = packageName.
-  validate = packageName: attrs:
+  validate =
+    packageName: attrs:
     let
       providedKeys = builtins.attrNames attrs;
 
-      missingFields = builtins.filter
-        (name: !builtins.hasAttr name attrs)
-        requiredFieldNames;
+      missingFields = builtins.filter (name: !builtins.hasAttr name attrs) requiredFieldNames;
 
-      extraFields = builtins.filter
-        (name: !builtins.elem name allFieldNames)
-        providedKeys;
+      extraFields = builtins.filter (name: !builtins.elem name allFieldNames) providedKeys;
 
       _checkMissing =
-        missingFields == []
+        missingFields == [ ]
         || throw (
           "HLD '${packageName}': missing required field(s): "
           + builtins.concatStringsSep ", " missingFields
@@ -267,7 +274,7 @@ let
         );
 
       _checkExtra =
-        extraFields == []
+        extraFields == [ ]
         || throw (
           "HLD '${packageName}': unknown field(s): "
           + builtins.concatStringsSep ", " extraFields
@@ -277,7 +284,8 @@ let
 
       # ── originType validation ──────────────────────────────────────────
       _checkOriginType =
-        let ot = attrs.originType;
+        let
+          ot = attrs.originType;
         in
         (ot == "github-releases" || ot == "torch-website")
         || throw (
@@ -286,78 +294,101 @@ let
         );
 
       # ── Dynamic defaults (depend on packageName) ───────────────────────
-      resolvedPname       = attrs.pname       or packageName;
+      resolvedPname = attrs.pname or packageName;
       resolvedNixpkgsAttr = attrs.nixpkgsAttr or packageName;
 
       resolvedGenerateHashesScript =
-        if builtins.hasAttr "generateHashesScript" attrs
-        then attrs.generateHashesScript
+        if builtins.hasAttr "generateHashesScript" attrs then
+          attrs.generateHashesScript
         else
-          let scriptPath = ./. + "/${packageName}/generate-hashes.py";
-          in if builtins.pathExists scriptPath then scriptPath else null;
+          let
+            scriptPath = ./. + "/${packageName}/generate-hashes.py";
+          in
+          if builtins.pathExists scriptPath then scriptPath else null;
+
+      resolvedTestScript =
+        if builtins.hasAttr "testScript" attrs then
+          attrs.testScript
+        else
+          let
+            scriptPath = ./. + "/${packageName}/manual_debug.py";
+          in
+          if builtins.pathExists scriptPath then scriptPath else null;
 
       # ── Conditional defaults (depend on originType) ────────────────────
       resolvedMkChangelog =
-        if builtins.hasAttr "mkChangelog" attrs
-        then attrs.mkChangelog
-        else if attrs.originType == "github-releases"
-        then hldHelpers."github-release-tag" attrs.srcOwner attrs.srcRepo
-        else throw (
-          "HLD '${packageName}': mkChangelog is required when "
-          + "originType = \"torch-website\""
-        );
+        if builtins.hasAttr "mkChangelog" attrs then
+          attrs.mkChangelog
+        else if attrs.originType == "github-releases" then
+          hldHelpers."github-release-tag" attrs.srcOwner attrs.srcRepo
+        else
+          throw ("HLD '${packageName}': mkChangelog is required when " + "originType = \"torch-website\"");
 
       resolvedMkOverlayInfo =
-        if builtins.hasAttr "mkOverlayInfo" attrs
-        then attrs.mkOverlayInfo
-        else if attrs.originType == "github-releases"
-        then hldHelpers.mkOverlayInfo {
-          pname               = resolvedPname;
-          nixpkgsAttr         = resolvedNixpkgsAttr;
-          srcOwner            = attrs.srcOwner;
-          srcRepo             = attrs.srcRepo;
-          mkChangelog         = resolvedMkChangelog;
-          # Thread through the HLD-level broken-check functions so that even
-          # auto-defaulted mkOverlayInfo carries them into overlayInfo.
-          # attrs.X or (_: false) because appliedDefaults haven't been merged
-          # yet at this point in validate.
-          isBinBuildBroken    = attrs.isBinBuildBroken    or (_: false);
-          isSourceBuildBroken = attrs.isSourceBuildBroken or (_: false);
-        }
-        else throw (
-          "HLD '${packageName}': mkOverlayInfo is required when "
-          + "originType = \"torch-website\""
-        );
+        if builtins.hasAttr "mkOverlayInfo" attrs then
+          attrs.mkOverlayInfo
+        else if attrs.originType == "github-releases" then
+          hldHelpers.mkOverlayInfo {
+            pname = resolvedPname;
+            nixpkgsAttr = resolvedNixpkgsAttr;
+            srcOwner = attrs.srcOwner;
+            srcRepo = attrs.srcRepo;
+            mkChangelog = resolvedMkChangelog;
+            # Thread through the HLD-level broken-check functions so that even
+            # auto-defaulted mkOverlayInfo carries them into overlayInfo.
+            # attrs.X or (_: false) because appliedDefaults haven't been merged
+            # yet at this point in validate.
+            isBinBuildBroken = attrs.isBinBuildBroken or (_: false);
+            isSourceBuildBroken = attrs.isSourceBuildBroken or (_: false);
+          }
+        else
+          throw ("HLD '${packageName}': mkOverlayInfo is required when " + "originType = \"torch-website\"");
 
       # ── Static defaults ────────────────────────────────────────────────
       # Handles canBuildBin, versionConstraints, data (and any future fields
       # with a plain `default` value in fieldSpecs).
       appliedDefaults = builtins.listToAttrs (
-        builtins.concatLists (map (name:
-          let spec = fieldSpecs.${name};
-          in
-          if builtins.hasAttr "default" spec && !builtins.hasAttr name attrs
-          then [ { inherit name; value = spec.default; } ]
-          else []
-        ) allFieldNames)
+        builtins.concatLists (
+          map (
+            name:
+            let
+              spec = fieldSpecs.${name};
+            in
+            if builtins.hasAttr "default" spec && !builtins.hasAttr name attrs then
+              [
+                {
+                  inherit name;
+                  value = spec.default;
+                }
+              ]
+            else
+              [ ]
+          ) allFieldNames
+        )
       );
 
       # ── Computed fields (dynamic + conditional) ────────────────────────
       # These always override whatever was in attrs (they resolve to the HLD-
       # provided value when present, or to the computed default otherwise).
       computedFields = {
-        pname                = resolvedPname;
-        nixpkgsAttr          = resolvedNixpkgsAttr;
-        mkChangelog          = resolvedMkChangelog;
-        mkOverlayInfo        = resolvedMkOverlayInfo;
+        pname = resolvedPname;
+        nixpkgsAttr = resolvedNixpkgsAttr;
+        mkChangelog = resolvedMkChangelog;
+        mkOverlayInfo = resolvedMkOverlayInfo;
         generateHashesScript = resolvedGenerateHashesScript;
+        testScript = resolvedTestScript;
       };
     in
     assert _checkMissing;
     assert _checkExtra;
     assert _checkOriginType;
-    attrs // appliedDefaults // computedFields
-    // { _isHighLevelDerivation = true; inherit packageName; };
+    attrs
+    // appliedDefaults
+    // computedFields
+    // {
+      _isHighLevelDerivation = true;
+      inherit packageName;
+    };
 
   # ── check ─────────────────────────────────────────────────────────────────
   #

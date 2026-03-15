@@ -21,19 +21,23 @@ let
 
   # Split "x86_64-linux" → ["x86_64" "-" "linux"]  (builtins.split keeps separators)
   systemParts = builtins.split "-" pkgs.stdenv.system;
-  rawArch     = builtins.elemAt systemParts 0;   # "x86_64" | "aarch64"
-  rawOs       = builtins.elemAt systemParts 2;   # "linux"  | "darwin" | …
+  rawArch = builtins.elemAt systemParts 0; # "x86_64" | "aarch64"
+  rawOs = builtins.elemAt systemParts 2; # "linux"  | "darwin" | …
 
   # ── Version comparison internals ─────────────────────────────────────────
 
-  _parseMajorMinor = v:
-    let parts = lib.strings.splitString "." v;
-    in {
+  _parseMajorMinor =
+    v:
+    let
+      parts = lib.strings.splitString "." v;
+    in
+    {
       maj = lib.toInt (lib.elemAt parts 0);
       min = lib.toInt (lib.elemAt parts 1);
     };
 
-in {
+in
+{
 
   # ── Platform ─────────────────────────────────────────────────────────────
 
@@ -41,17 +45,21 @@ in {
   pythonVersion = pkgs.python3.pythonVersion;
 
   # Nix-style Python version attribute name, e.g. "py312"
-  pyVer = "py${builtins.replaceStrings ["."] [""] pkgs.python3.pythonVersion}";
+  pyVer = "py${builtins.replaceStrings [ "." ] [ "" ] pkgs.python3.pythonVersion}";
 
   # CPU architecture as used in binary-hashes.nix, e.g. "x86_64" or "aarch64"
   arch = rawArch;
 
   # OS name as used in binary-hashes.nix
   os =
-    if rawOs == "linux"                         then "linux"
-    else if rawOs == "darwin"                   then "darwin"
-    else if rawOs == "mingw32" || rawOs == "cygwin" then "windows"
-    else throw "Unsupported OS for binary wheel packages: ${rawOs}";
+    if rawOs == "linux" then
+      "linux"
+    else if rawOs == "darwin" then
+      "darwin"
+    else if rawOs == "mingw32" || rawOs == "cygwin" then
+      "windows"
+    else
+      throw "Unsupported OS for binary wheel packages: ${rawOs}";
 
   # ── Version comparison (major.minor strings) ──────────────────────────────
   #
@@ -63,24 +71,40 @@ in {
   parseMajorMinor = _parseMajorMinor;
 
   # a <= b
-  versionLE = a: b:
-    let pa = _parseMajorMinor a; pb = _parseMajorMinor b;
-    in pa.maj < pb.maj || (pa.maj == pb.maj && pa.min <= pb.min);
+  versionLE =
+    a: b:
+    let
+      pa = _parseMajorMinor a;
+      pb = _parseMajorMinor b;
+    in
+    pa.maj < pb.maj || (pa.maj == pb.maj && pa.min <= pb.min);
 
   # a < b
-  versionLT = a: b:
-    let pa = _parseMajorMinor a; pb = _parseMajorMinor b;
-    in pa.maj < pb.maj || (pa.maj == pb.maj && pa.min < pb.min);
+  versionLT =
+    a: b:
+    let
+      pa = _parseMajorMinor a;
+      pb = _parseMajorMinor b;
+    in
+    pa.maj < pb.maj || (pa.maj == pb.maj && pa.min < pb.min);
 
   # a > b
-  versionGT = a: b:
-    let pa = _parseMajorMinor a; pb = _parseMajorMinor b;
-    in pa.maj > pb.maj || (pa.maj == pb.maj && pa.min > pb.min);
+  versionGT =
+    a: b:
+    let
+      pa = _parseMajorMinor a;
+      pb = _parseMajorMinor b;
+    in
+    pa.maj > pb.maj || (pa.maj == pb.maj && pa.min > pb.min);
 
   # a == b  (major.minor only — patch component is ignored)
-  versionEQ = a: b:
-    let pa = _parseMajorMinor a; pb = _parseMajorMinor b;
-    in pa.maj == pb.maj && pa.min == pb.min;
+  versionEQ =
+    a: b:
+    let
+      pa = _parseMajorMinor a;
+      pb = _parseMajorMinor b;
+    in
+    pa.maj == pb.maj && pa.min == pb.min;
 
   # ── Hash generation app builder ───────────────────────────────────────────
   #
@@ -103,13 +127,18 @@ in {
   #   genHashesLib = import ./generate-hashes/lib.nix { inherit pkgs; };
   #   apps.x86_64-linux."flash-attn".gen-hashes =
   #     genHashesLib.makeGenHashesApp pytorchScope."flash-attn";
-  makeGenHashesApp = hld:
+  makeGenHashesApp =
+    hld:
     let
-      name       = hld.packageName;
+      name = hld.packageName;
       originType = hld.originType;
       githubRepo = hld.srcOwner + "/" + hld.srcRepo;
       pkgModulePath = "pkgs/${name}/generate-hashes.py";
-      deps = [ pkgs.python3 pkgs.git pkgs.nix-prefetch-github ];
+      deps = [
+        pkgs.python3
+        pkgs.git
+        pkgs.nix-prefetch-github
+      ];
       wrapperScript = pkgs.writeShellScript "gen-hashes-${name}" ''
         export PATH="${lib.makeBinPath deps}:$PATH"
         exec env PYTHONPATH="$PWD/generate-hashes" \
@@ -120,6 +149,9 @@ in {
             "$@"
       '';
     in
-    { type = "app"; program = toString wrapperScript; };
+    {
+      type = "app";
+      program = toString wrapperScript;
+    };
 
 }

@@ -7,8 +7,9 @@
 { pkgs, pytorchScope }:
 
 let
+  lib = pkgs.lib;
   concretise = import ./concretise;
-  testScriptContent = builtins.readFile ./test-torch.py;
+  testRunnerContent = builtins.readFile ./test-runner/main.py;
 
   # ── Example: validates the pattern shown in example/flake.nix ────────────
   exampleResult = import ./example {
@@ -18,14 +19,27 @@ let
     };
   };
 
-  makeTestApp = envPkg: name: {
-    type = "app";
-    program = toString (
-      pkgs.writeShellScript "run-tests-${name}" ''
-        exec ${envPkg}/bin/python3 ${pkgs.writeText "test-torch.py" testScriptContent}
-      ''
-    );
-  };
+  # Build a test app from a concretise result.
+  # Automatically discovers and runs all manual_debug.py test scripts from
+  # the HLDs in the environment — no manual listing needed.
+  makeTestApp =
+    result: name:
+    let
+      testScripts = result.testScripts or [ ];
+      # Pass name:path pairs so the runner can display human-readable names.
+      testScriptArgs = lib.concatMapStringsSep " " (e: ''"${e.name}:${e.script}"'') testScripts;
+      testRunnerStorePath = pkgs.writeText "test-runner.py" testRunnerContent;
+      scriptArgsFlag = if testScripts != [ ] then "--test-scripts ${testScriptArgs}" else "";
+    in
+    {
+      type = "app";
+      program = toString (
+        pkgs.writeShellScript "run-tests-${name}" ''
+          exec ${result.env}/bin/python3 ${testRunnerStorePath} \
+            ${scriptArgsFlag}
+        ''
+      );
+    };
 
   # ── Default concrete environment ─────────────────────────────────────────
   # cu126-pascal, Python 3.13, all three packages.
@@ -267,21 +281,21 @@ in
   };
 
   apps = {
-    default = makeTestApp defaultResult.env "default";
-    test-example = makeTestApp exampleResult.env "test-example";
-    test-torch-py313-cu128 = makeTestApp testTorchCu128Result.env "test-torch-py313-cu128";
-    test-causal-conv1d-py313-cu128 = makeTestApp testCausalCu128Result.env "test-causal-conv1d-py313-cu128";
-    test-causal-conv1d-from-source-py313-cu128 = makeTestApp testCausalCu128FromSourceResult.env "test-causal-conv1d-from-source-py313-cu128";
-    test-flash-attn-bin-py313-cu128 = makeTestApp testFlashAttnBinCu128Result.env "test-flash-attn-bin-py313-cu128";
-    test-flash-attn-source-py313-cu128 = makeTestApp testFlashAttnSourceCu128Result.env "test-flash-attn-source-py313-cu128";
-    test-all-py313-cu128 = makeTestApp testAllCu128Result.env "test-all-py313-cu128";
-    test-mamba-py313-cu128 = makeTestApp testMambaCu128Result.env "test-mamba-py313-cu128";
-    test-mamba-source-py313-cu128 = makeTestApp testMambaSourceCu128Result.env "test-mamba-source-py313-cu128";
-    test-torch-py313-cu126 = makeTestApp testTorchCu126Result.env "test-torch-py313-cu126";
-    test-flash-attn-bin-py313-cu126 = makeTestApp testFlashAttnBinCu126Result.env "test-flash-attn-bin-py313-cu126";
-    test-all-py313-cu126 = makeTestApp testAllCu126Result.env "test-all-py313-cu126";
-    test-torch-py313-cu130 = makeTestApp testTorchCu130Result.env "test-torch-py313-cu130";
-    test-all-py313-cu130 = makeTestApp testAllCu130Result.env "test-all-py313-cu130";
+    default = makeTestApp defaultResult "default";
+    test-example = makeTestApp exampleResult "test-example";
+    test-torch-py313-cu128 = makeTestApp testTorchCu128Result "test-torch-py313-cu128";
+    test-causal-conv1d-py313-cu128 = makeTestApp testCausalCu128Result "test-causal-conv1d-py313-cu128";
+    test-causal-conv1d-from-source-py313-cu128 = makeTestApp testCausalCu128FromSourceResult "test-causal-conv1d-from-source-py313-cu128";
+    test-flash-attn-bin-py313-cu128 = makeTestApp testFlashAttnBinCu128Result "test-flash-attn-bin-py313-cu128";
+    test-flash-attn-source-py313-cu128 = makeTestApp testFlashAttnSourceCu128Result "test-flash-attn-source-py313-cu128";
+    test-all-py313-cu128 = makeTestApp testAllCu128Result "test-all-py313-cu128";
+    test-mamba-py313-cu128 = makeTestApp testMambaCu128Result "test-mamba-py313-cu128";
+    test-mamba-source-py313-cu128 = makeTestApp testMambaSourceCu128Result "test-mamba-source-py313-cu128";
+    test-torch-py313-cu126 = makeTestApp testTorchCu126Result "test-torch-py313-cu126";
+    test-flash-attn-bin-py313-cu126 = makeTestApp testFlashAttnBinCu126Result "test-flash-attn-bin-py313-cu126";
+    test-all-py313-cu126 = makeTestApp testAllCu126Result "test-all-py313-cu126";
+    test-torch-py313-cu130 = makeTestApp testTorchCu130Result "test-torch-py313-cu130";
+    test-all-py313-cu130 = makeTestApp testAllCu130Result "test-all-py313-cu130";
     test-mamba-autotune-py313-cu128 = {
       type = "app";
       program = toString (

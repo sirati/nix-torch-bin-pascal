@@ -70,39 +70,41 @@
 #     devShell           # mkShell containing env
 #   }
 
-{ pkgs
-, mlPackages              # list of HLDs; transitive deps are collected automatically
-, extraPythonPackages ? _ps: []
-                          # withPackages-style function for additional nixpkgs Python
-                          # packages to include in env alongside the HLD packages,
-                          # e.g. extraPythonPackages = ps: [ ps.pandas ps.numpy ]
-, pythonPackageOverrides ? _self: _super: {}
-                          # Optional overlay applied to basePython.pkgs BEFORE any
-                          # HLD packages are built.  Use this to pin or override
-                          # non-HLD Python packages (e.g. einops, transformers) that
-                          # HLD overlay files pull in via pkgs.python3Packages.
-                          # Applied after HDL resolution but before package building.
-                          # Example:
-                          #   pythonPackageOverrides = self: super: {
-                          #     einops = super.einops.overrideAttrs { version = "0.9.0"; };
-                          #   };
-, python                  # "3.11" | "3.12" | "3.13" | "3.14"
-, cuda                    # "12.6" | "12.8" | "13.0"
-, torch                   # required – major.minor torch series, e.g. "2.10"
-                          # Wheels are NOT forward-compatible across minor versions,
-                          # so this must be specified explicitly to avoid silently
-                          # selecting an incompatible torch build.
-, pascal             ? false
-                          # Enable Pascal (sm_60/sm_61) GPU support (default: false).
-                          # WARNING: Pascal support is not validated per library –
-                          # setting pascal = true may cause build failures or silently
-                          # broken binaries for packages whose upstream wheels were not
-                          # compiled for sm_60.  Only set this if you know all requested
-                          # libraries support it.
-, allowBuildingFromSource  # required – true: fall back to a source build when no
-                          # pre-built wheel exists for the requested combination.
-                          # false: fail at evaluation time if any package lacks a wheel
-                          # (safe default – avoids surprise multi-hour compilations).
+{
+  pkgs,
+  mlPackages, # list of HLDs; transitive deps are collected automatically
+  extraPythonPackages ? _ps: [ ],
+  # withPackages-style function for additional nixpkgs Python
+  # packages to include in env alongside the HLD packages,
+  # e.g. extraPythonPackages = ps: [ ps.pandas ps.numpy ]
+  pythonPackageOverrides ? _self: _super: { },
+  # Optional overlay applied to basePython.pkgs BEFORE any
+  # HLD packages are built.  Use this to pin or override
+  # non-HLD Python packages (e.g. einops, transformers) that
+  # HLD overlay files pull in via pkgs.python3Packages.
+  # Applied after HDL resolution but before package building.
+  # Example:
+  #   pythonPackageOverrides = self: super: {
+  #     einops = super.einops.overrideAttrs { version = "0.9.0"; };
+  #   };
+  python, # "3.11" | "3.12" | "3.13" | "3.14"
+  cuda, # "12.6" | "12.8" | "13.0"
+  torch,
+  # required – major.minor torch series, e.g. "2.10"
+  # Wheels are NOT forward-compatible across minor versions,
+  # so this must be specified explicitly to avoid silently
+  # selecting an incompatible torch build.
+  pascal ? false,
+  # Enable Pascal (sm_60/sm_61) GPU support (default: false).
+  # WARNING: Pascal support is not validated per library –
+  # setting pascal = true may cause build failures or silently
+  # broken binaries for packages whose upstream wheels were not
+  # compiled for sm_60.  Only set this if you know all requested
+  # libraries support it.
+  allowBuildingFromSource, # required – true: fall back to a source build when no
+  # pre-built wheel exists for the requested combination.
+  # false: fail at evaluation time if any package lacks a wheel
+  # (safe default – avoids surprise multi-hour compilations).
 }:
 
 let
@@ -110,8 +112,17 @@ let
 
   # ── Input validation ──────────────────────────────────────────────────────
 
-  _validPythons = [ "3.11" "3.12" "3.13" "3.14" ];
-  _validCudas   = [ "12.6" "12.8" "13.0" ];
+  _validPythons = [
+    "3.11"
+    "3.12"
+    "3.13"
+    "3.14"
+  ];
+  _validCudas = [
+    "12.6"
+    "12.8"
+    "13.0"
+  ];
 
   # torch is validated as a free-form "major.minor" string rather than an
   # enumerated list, because new minor releases appear frequently.
@@ -132,12 +143,11 @@ let
   _checkCuda =
     builtins.elem cuda _validCudas
     || throw (
-      "concretise: unsupported cuda '${cuda}'. "
-      + "Valid values: ${lib.concatStringsSep " " _validCudas}"
+      "concretise: unsupported cuda '${cuda}'. " + "Valid values: ${lib.concatStringsSep " " _validCudas}"
     );
 
   _checkPackages =
-    builtins.isList mlPackages && mlPackages != []
+    builtins.isList mlPackages && mlPackages != [ ]
     || throw "concretise: 'mlPackages' must be a non-empty list of high-level derivations";
 
   _checkAllHLD =
@@ -163,14 +173,11 @@ let
   _checkCudaCompiler =
     let
       ver = _gcc13Version;
-      major = if ver != null
-              then lib.toInt (builtins.head (lib.strings.splitString "." ver))
-              else null;
+      major = if ver != null then lib.toInt (builtins.head (lib.strings.splitString "." ver)) else null;
     in
     (ver != null && major == 13)
     || throw (
-      if ver == null
-      then
+      if ver == null then
         "concretise: pkgs.gcc13 is not available in the provided nixpkgs instance. "
         + "CUDA 12.x requires GCC 13 for building. "
         + "Please use a nixpkgs revision that provides gcc13."
@@ -181,12 +188,10 @@ let
         + "Please check your nixpkgs revision."
     );
 
-
   # ── Python interpreter ────────────────────────────────────────────────────
 
   # Map human-friendly "3.13" → pkgs.python313
-  pythonAttrName =
-    "python" + lib.replaceStrings [ "." ] [ "" ] python;
+  pythonAttrName = "python" + lib.replaceStrings [ "." ] [ "" ] python;
 
   # Nix-style Python version key used in binary-hashes attrsets, e.g. "py313".
   # Matches the pyVer computed by generate-hashes/lib.nix at build time.
@@ -194,7 +199,7 @@ let
 
   _rawPython =
     pkgs.${pythonAttrName}
-    or (throw "concretise: python ${python} not found in nixpkgs as '${pythonAttrName}'");
+      or (throw "concretise: python ${python} not found in nixpkgs as '${pythonAttrName}'");
 
   # Apply user-supplied pythonPackageOverrides to the base interpreter so that
   # HLD overlay files (which reference pkgs.python3Packages.*) see the
@@ -210,15 +215,22 @@ let
   # The cudaLabel is the canonical key used in HLD binVersions attrsets.
   # Map human-friendly "12.6" → "cu126".
   cudaLabel =
-    if      cuda == "12.6" then "cu126"
-    else if cuda == "12.8" then "cu128"
-    else if cuda == "13.0" then "cu130"
-    else throw "concretise: unsupported cuda '${cuda}'";  # unreachable after _checkCuda
+    if cuda == "12.6" then
+      "cu126"
+    else if cuda == "12.8" then
+      "cu128"
+    else if cuda == "13.0" then
+      "cu130"
+    else
+      throw "concretise: unsupported cuda '${cuda}'"; # unreachable after _checkCuda
 
   baseCudaPackages =
-    if      cudaLabel == "cu126" then pkgs.cudaPackages_12_6
-    else if cudaLabel == "cu128" then pkgs.cudaPackages_12_8
-    else                              pkgs.cudaPackages_13_0;
+    if cudaLabel == "cu126" then
+      pkgs.cudaPackages_12_6
+    else if cudaLabel == "cu128" then
+      pkgs.cudaPackages_12_8
+    else
+      pkgs.cudaPackages_13_0;
 
   # torch 2.10.0 wheels for cu126/cu130 were compiled against cuDNN 9.15.1,
   # while nixpkgs currently ships 9.13.0 for all CUDA package sets.
@@ -261,8 +273,8 @@ let
   # chosen interpreter so that overlay-bin.nix files automatically pick it up via
   # pkgs.python3 / pkgs.python3Packages.
   pkgsForBuild = pkgs // {
-    stdenv          = pkgs.overrideCC pkgs.stdenv pkgs.gcc13;
-    python3         = basePython;
+    stdenv = pkgs.overrideCC pkgs.stdenv pkgs.gcc13;
+    python3 = basePython;
     python3Packages = basePython.pkgs;
   };
 
@@ -271,18 +283,18 @@ let
   # Starting from the user-supplied list, recursively expand highLevelDeps and
   # collect all reachable HLDs into an attrset keyed by packageName.
   # Each package is visited at most once (dedup by packageName).
-  collectAll = userPackages:
+  collectAll =
+    userPackages:
     let
-      go = acc: hld:
-        if builtins.hasAttr hld.packageName acc
-        then acc      # already visited – skip
+      go =
+        acc: hld:
+        if builtins.hasAttr hld.packageName acc then
+          acc # already visited – skip
         else
           # Record this HLD, then recurse into its direct deps.
-          lib.foldl' go
-            (acc // { ${hld.packageName} = hld; })
-            (lib.attrValues hld.highLevelDeps);
+          lib.foldl' go (acc // { ${hld.packageName} = hld; }) (lib.attrValues hld.highLevelDeps);
     in
-    lib.foldl' go {} userPackages;
+    lib.foldl' go { } userPackages;
 
   allHLDs = collectAll mlPackages;
 
@@ -293,17 +305,18 @@ let
   #
   # before a b = true  ⟺  a must be built before b
   #           ⟺  a is a direct high-level dependency of b
-  topoResult = lib.toposort
-    (a: b: builtins.hasAttr a.packageName b.highLevelDeps)
-    (lib.attrValues allHLDs);
+  topoResult = lib.toposort (a: b: builtins.hasAttr a.packageName b.highLevelDeps) (
+    lib.attrValues allHLDs
+  );
 
   sortedHLDs =
-    if topoResult ? cycle
-    then throw (
-      "concretise: circular dependency detected among packages: "
-      + lib.concatStringsSep " -> " (map (h: h.packageName) topoResult.cycle)
-    )
-    else topoResult.result;
+    if topoResult ? cycle then
+      throw (
+        "concretise: circular dependency detected among packages: "
+        + lib.concatStringsSep " -> " (map (h: h.packageName) topoResult.cycle)
+      )
+    else
+      topoResult.result;
 
   # ── Version constraints ───────────────────────────────────────────────────
 
@@ -312,73 +325,84 @@ let
   # package name.  When two HLDs constrain the same dependency:
   #   - maxVersion: take the stricter (lower) bound
   #   - minVersion: take the stricter (higher) bound
-  allVersionConstraints =
-    lib.foldl' (acc: hld:
+  allVersionConstraints = lib.foldl' (
+    acc: hld:
+    let
+      constraints = hld.versionConstraints or { };
+    in
+    lib.foldl' (
+      acc2: depName:
       let
-        constraints = hld.versionConstraints or {};
+        existing = acc2.${depName} or { };
+        incoming = constraints.${depName};
+        maxVersion =
+          if existing ? maxVersion && incoming ? maxVersion then
+            if lib.versionOlder existing.maxVersion incoming.maxVersion then
+              existing.maxVersion # existing bound is lower → stricter
+            else
+              incoming.maxVersion
+          else
+            existing.maxVersion or incoming.maxVersion or null;
+        minVersion =
+          if existing ? minVersion && incoming ? minVersion then
+            if lib.versionOlder incoming.minVersion existing.minVersion then
+              existing.minVersion # existing bound is higher → stricter
+            else
+              incoming.minVersion
+          else
+            existing.minVersion or incoming.minVersion or null;
+        merged =
+          { }
+          // (if maxVersion != null then { inherit maxVersion; } else { })
+          // (if minVersion != null then { inherit minVersion; } else { });
       in
-      lib.foldl' (acc2: depName:
-        let
-          existing  = acc2.${depName} or {};
-          incoming  = constraints.${depName};
-          maxVersion =
-            if existing ? maxVersion && incoming ? maxVersion
-            then
-              if lib.versionOlder existing.maxVersion incoming.maxVersion
-              then existing.maxVersion    # existing bound is lower → stricter
-              else incoming.maxVersion
-            else existing.maxVersion or incoming.maxVersion or null;
-          minVersion =
-            if existing ? minVersion && incoming ? minVersion
-            then
-              if lib.versionOlder incoming.minVersion existing.minVersion
-              then existing.minVersion    # existing bound is higher → stricter
-              else incoming.minVersion
-            else existing.minVersion or incoming.minVersion or null;
-          merged =
-            {}
-            // (if maxVersion != null then { inherit maxVersion; } else {})
-            // (if minVersion != null then { inherit minVersion; } else {});
-        in
-        acc2 // { ${depName} = merged; }
-      ) acc (builtins.attrNames constraints)
-    ) {} sortedHLDs;
+      acc2 // { ${depName} = merged; }
+    ) acc (builtins.attrNames constraints)
+  ) { } sortedHLDs;
 
   # Apply the collected constraints for a given package name to a list of
   # version strings, returning only those that satisfy all bounds.
-  applyVersionConstraints = pkgName: versions:
+  applyVersionConstraints =
+    pkgName: versions:
     let
-      c      = allVersionConstraints.${pkgName} or {};
-      maxOk  = v: !(c ? maxVersion) || !(lib.versionOlder c.maxVersion v);
-      minOk  = v: !(c ? minVersion) || !(lib.versionOlder v c.minVersion);
+      c = allVersionConstraints.${pkgName} or { };
+      maxOk = v: !(c ? maxVersion) || !(lib.versionOlder c.maxVersion v);
+      minOk = v: !(c ? minVersion) || !(lib.versionOlder v c.minVersion);
     in
     lib.filter (v: maxOk v && minOk v) versions;
 
   # ── Build one package ─────────────────────────────────────────────────────
 
   # Return the major.minor prefix of a full version string, e.g. "2.10.0" → "2.10".
-  _majorMinorOf = v:
-    let parts = lib.splitString "." v;
-    in lib.concatStringsSep "." (lib.take 2 parts);
+  _majorMinorOf =
+    v:
+    let
+      parts = lib.splitString "." v;
+    in
+    lib.concatStringsSep "." (lib.take 2 parts);
 
   # Shared version-selection logic used by both buildOne and _checkBinAvailable.
   # Returns { allVersions, constrainedVersions, version } for a given HLD.
   # Having it here avoids duplicating the torch-series filter and constraint
   # application in two places.
-  _selectVersion = hld:
+  _selectVersion =
+    hld:
     let
-      allVersionsRaw      = hld.getVersions cudaLabel pyVer;
+      allVersionsRaw = hld.getVersions cudaLabel pyVer;
       # For torch, restrict selection to the caller-specified major.minor series.
       # Binary wheels are not forward-compatible across minor versions.
-      allVersions         =
-        if hld.packageName == "torch"
-        then lib.filter (v: _majorMinorOf v == torch) allVersionsRaw
-        else allVersionsRaw;
+      allVersions =
+        if hld.packageName == "torch" then
+          lib.filter (v: _majorMinorOf v == torch) allVersionsRaw
+        else
+          allVersionsRaw;
       constrainedVersions = applyVersionConstraints hld.packageName allVersions;
-      sortedVersions      = lib.sort lib.versionOlder constrainedVersions;
-      version             = if sortedVersions != [] then lib.last sortedVersions else null;
+      sortedVersions = lib.sort lib.versionOlder constrainedVersions;
+      version = if sortedVersions != [ ] then lib.last sortedVersions else null;
     in
-    { inherit allVersions constrainedVersions version; };
+    {
+      inherit allVersions constrainedVersions version;
+    };
 
   # Pre-resolved version stubs — computed once in topological order so that
   # _checkBinAvailable can pass them as a fake resolvedDeps to canBuildBin.
@@ -388,13 +412,13 @@ let
   # Because sortedHLDs is in dependency order (torch before causal-conv1d etc.),
   # the fold here mirrors the dependency order and ensures torch's stub is
   # present before causal-conv1d's canBuildBin is evaluated.
-  preResolvedVersions = lib.foldl'
-    (acc: hld:
-      let version = (_selectVersion hld).version;
-      in acc // { ${hld.packageName} = { inherit version; }; }
-    )
-    {}
-    sortedHLDs;
+  preResolvedVersions = lib.foldl' (
+    acc: hld:
+    let
+      version = (_selectVersion hld).version;
+    in
+    acc // { ${hld.packageName} = { inherit version; }; }
+  ) { } sortedHLDs;
 
   # Digits-only torch series string used in store-path name suffixes.
   # e.g. torch = "2.10" → _torchSeriesDigits = "210"
@@ -412,13 +436,19 @@ let
   #
   # The stamp also injects passthru.concretiseMarker for cross-call mixing
   # detection in checkedWithPackages.
-  buildAndStamp = resolvedDeps: hld:
+  buildAndStamp =
+    resolvedDeps: hld:
     let
-      sel     = _selectVersion hld;
+      sel = _selectVersion hld;
       version = sel.version;
-      args    = {
+      args = {
         pkgs = pkgsForBuild;
-        inherit cudaPackages cudaLabel resolvedDeps version;
+        inherit
+          cudaPackages
+          cudaLabel
+          resolvedDeps
+          version
+          ;
         mkOverlayInfo = hld.mkOverlayInfo;
         # inherit wrappers; # re-enable together with wrappers above
       };
@@ -428,28 +458,33 @@ let
       # built against torch <= 2.8 are broken at runtime against torch >= 2.9).
       # When false and allowBuildingFromSource is set, we fall back to
       # buildSource.
-      binCompatible = version != null &&
-        hld.canBuildBin { inherit resolvedDeps version cudaLabel; };
+      binCompatible = version != null && hld.canBuildBin { inherit resolvedDeps version cudaLabel; };
       drv =
-        if binCompatible
-          then hld.buildBin args
-          else if allowBuildingFromSource
-            then hld.buildSource args
-            else throw (
-              "concretise: no usable pre-built wheel for '${hld.packageName}' "
-              + "with cudaLabel '${cudaLabel}' and Python ${python} (${pyVer})"
-              + (if version == null
-                 then
-                   let c = allVersionConstraints.${hld.packageName} or {}; in
-                   if c != {}
-                   then " (no binary version found after applying versionConstraints: "
-                        + "${builtins.toJSON c}; unconstrained versions: "
-                        + lib.concatStringsSep ", " (lib.sort lib.versionOlder sel.allVersions)
-                        + ")"
-                   else " (no binary version found)"
-                 else " (version ${version} is ABI-incompatible with resolved dependencies)")
-              + ". Set allowBuildingFromSource = true to build from source."
-            );
+        if binCompatible then
+          hld.buildBin args
+        else if allowBuildingFromSource then
+          hld.buildSource args
+        else
+          throw (
+            "concretise: no usable pre-built wheel for '${hld.packageName}' "
+            + "with cudaLabel '${cudaLabel}' and Python ${python} (${pyVer})"
+            + (
+              if version == null then
+                let
+                  c = allVersionConstraints.${hld.packageName} or { };
+                in
+                if c != { } then
+                  " (no binary version found after applying versionConstraints: "
+                  + "${builtins.toJSON c}; unconstrained versions: "
+                  + lib.concatStringsSep ", " (lib.sort lib.versionOlder sel.allVersions)
+                  + ")"
+                else
+                  " (no binary version found)"
+              else
+                " (version ${version} is ABI-incompatible with resolved dependencies)"
+            )
+            + ". Set allowBuildingFromSource = true to build from source."
+          );
       # Suffix appended to the Nix store-path name to make builds for different
       # torch/CUDA/pascal combinations visually distinct in the store.
       #
@@ -457,9 +492,9 @@ let
       # across all CUDA and torch versions, so their stamp is just "-bin".
       # The torch package itself skips the "-torch…" prefix since its own
       # pname already encodes the package identity.
-      cudaAgnostic  = hld.cudaAgnostic or false;
+      cudaAgnostic = hld.cudaAgnostic or false;
       torchAgnostic = hld.torchAgnostic or false;
-      isTorchPkg    = hld.packageName == "torch";
+      isTorchPkg = hld.packageName == "torch";
       # torchAgnostic packages (e.g. bitsandbytes) do not link against torch
       # at the C++/ABI level, so they skip the -torch{series} dimension.
       # cudaAgnostic packages (e.g. triton) skip all of cuda/torch/pascal.
@@ -474,8 +509,8 @@ let
       # Use basePython.version (e.g. "3.13.11") rather than the
       # pythonVersion attribute ("3.13") that buildPythonPackage embeds in
       # the default name, so the full patch release is visible in the store.
-      name     = "python${basePython.version}-${old.pname}-${old.version}${nameSuffix}";
-      passthru = (old.passthru or {}) // {
+      name = "python${basePython.version}-${old.pname}-${old.version}${nameSuffix}";
+      passthru = (old.passthru or { }) // {
         concretiseMarker = concretiseMarkerKey;
       };
     });
@@ -497,14 +532,16 @@ let
   # build evaluation begins.  Without this check the latter case would only
   # surface inside buildOne — still with a clear error, but later.
   _checkBinAvailable =
-    allowBuildingFromSource ||
-    builtins.all (hld:
+    allowBuildingFromSource
+    || builtins.all (
+      hld:
       let
-        sel           = _selectVersion hld;
-        version       = sel.version;
-        c             = allVersionConstraints.${hld.packageName} or {};
-        binCompatible = version != null &&
-          hld.canBuildBin {
+        sel = _selectVersion hld;
+        version = sel.version;
+        c = allVersionConstraints.${hld.packageName} or { };
+        binCompatible =
+          version != null
+          && hld.canBuildBin {
             resolvedDeps = preResolvedVersions;
             inherit version cudaLabel;
           };
@@ -513,19 +550,23 @@ let
       || throw (
         "concretise: no usable pre-built wheel for '${hld.packageName}' "
         + "with cudaLabel '${cudaLabel}' and Python ${python} (${pyVer})"
-        + (if version == null
-           then
-             (if sel.allVersions != [] && sel.constrainedVersions == []
-              then
+        + (
+          if version == null then
+            (
+              if sel.allVersions != [ ] && sel.constrainedVersions == [ ] then
                 " (no binary version found after applying versionConstraints: "
                 + "${builtins.toJSON c}; unconstrained versions: "
                 + lib.concatStringsSep ", " (lib.sort lib.versionOlder sel.allVersions)
                 + ")"
-              else "")
-           else
-             let torchV = (preResolvedVersions."torch" or {}).version or "unknown"; in
-             " (version ${version} is ABI-incompatible with"
-             + " torch ${torchV})")
+              else
+                ""
+            )
+          else
+            let
+              torchV = (preResolvedVersions."torch" or { }).version or "unknown";
+            in
+            " (version ${version} is ABI-incompatible with" + " torch ${torchV})"
+        )
         + ". Set allowBuildingFromSource = true to fall back to a source build."
       )
     ) sortedHLDs;
@@ -537,16 +578,11 @@ let
   # passthru.concretiseMarker so that the withPackages wrapper below can
   # detect when packages from two separate concretise calls (with different
   # CUDA / Python / Pascal settings) are mixed into a single Python environment.
-  concretiseMarkerKey =
-    "cuda=${cuda},pascal=${if pascal then "true" else "false"},python=${python}";
+  concretiseMarkerKey = "cuda=${cuda},pascal=${if pascal then "true" else "false"},python=${python}";
 
-
-
-  concretePackages =
-    lib.foldl'
-      (acc: hld: acc // { ${hld.packageName} = buildAndStamp acc hld; })
-      {}
-      sortedHLDs;
+  concretePackages = lib.foldl' (
+    acc: hld: acc // { ${hld.packageName} = buildAndStamp acc hld; }
+  ) { } sortedHLDs;
 
   # ── Augmented Python interpreter ──────────────────────────────────────────
 
@@ -565,25 +601,26 @@ let
   #
   # The check is best-effort: packages without a concretiseMarker (e.g. plain
   # nixpkgs packages like numpy) are silently accepted.
-  checkedWithPackages = f:
+  checkedWithPackages =
+    f:
     let
-      pkgSet        = augmentedPython.pkgs;
+      pkgSet = augmentedPython.pkgs;
       requestedPkgs = f pkgSet;
 
-      foreignPkgs = lib.filter
-        (p:
-          (p.passthru.concretiseMarker or null) != null &&
-          p.passthru.concretiseMarker != concretiseMarkerKey)
-        requestedPkgs;
+      foreignPkgs = lib.filter (
+        p:
+        (p.passthru.concretiseMarker or null) != null && p.passthru.concretiseMarker != concretiseMarkerKey
+      ) requestedPkgs;
 
       _checkMixing =
-        foreignPkgs == []
+        foreignPkgs == [ ]
         || throw (
           "concretise: mixing packages from different concretise calls is not allowed. "
           + "The following packages were concretised with different settings "
           + "(expected '${concretiseMarkerKey}'): "
-          + lib.concatStringsSep ", "
-              (map (p: "'${p.pname or p.name}' (${p.passthru.concretiseMarker})") foreignPkgs)
+          + lib.concatStringsSep ", " (
+            map (p: "'${p.pname or p.name}' (${p.passthru.concretiseMarker})") foreignPkgs
+          )
           + ". Make sure all packages in withPackages come from the same concretise call."
         );
     in
@@ -592,7 +629,9 @@ let
 
   # Expose the augmented Python with the mixing-detection wrapper in place of
   # the stock withPackages function.
-  checkedPython = augmentedPython // { withPackages = checkedWithPackages; };
+  checkedPython = augmentedPython // {
+    withPackages = checkedWithPackages;
+  };
 
   # ── Extra-package collision guard ─────────────────────────────────────────
 
@@ -602,12 +641,15 @@ let
   # own pname/name, whichever is available.
   concreteNameSet =
     let
-      byKey   = builtins.mapAttrs (_: _: true) concretePackages;
+      byKey = builtins.mapAttrs (_: _: true) concretePackages;
       byPname = builtins.listToAttrs (
-        map (p: { name = p.pname or p.name; value = true; })
-          (lib.attrValues concretePackages)
+        map (p: {
+          name = p.pname or p.name;
+          value = true;
+        }) (lib.attrValues concretePackages)
       );
-    in byKey // byPname;
+    in
+    byKey // byPname;
 
   # Build a set of names propagated directly by concrete packages.
   #
@@ -627,28 +669,41 @@ let
   # also "owned" by the pipeline.  filterExtras then silently drops any
   # extraPythonPackages entry whose name matches — the version already in the
   # closure (via the concrete package) wins.
-  propagatedByConcreteSet =
-    builtins.listToAttrs
-      (lib.concatMap (p:
-        let n = p.pname or (p.name or null); in
-        if n != null then [{ name = n; value = true; }] else []
-      ) (lib.concatMap
-          (pkg: pkg.propagatedBuildInputs or [])
-          (lib.attrValues concretePackages)));
+  propagatedByConcreteSet = builtins.listToAttrs (
+    lib.concatMap (
+      p:
+      let
+        n = p.pname or (p.name or null);
+      in
+      if n != null then
+        [
+          {
+            name = n;
+            value = true;
+          }
+        ]
+      else
+        [ ]
+    ) (lib.concatMap (pkg: pkg.propagatedBuildInputs or [ ]) (lib.attrValues concretePackages))
+  );
 
   # Drop any package from `extras` whose pname/name collides with either a
   # directly concretise-managed package or a package already propagated into
   # the env by one of those managed packages.  Packages without a recognisable
   # name attribute are passed through unchanged.
-  filterExtras = extras:
-    lib.filter (p:
-      let n = p.pname or (p.name or null);
-      in n == null ||
-         (!(concreteNameSet ? ${n}) && !(propagatedByConcreteSet ? ${n}))
+  filterExtras =
+    extras:
+    lib.filter (
+      p:
+      let
+        n = p.pname or (p.name or null);
+      in
+      n == null || (!(concreteNameSet ? ${n}) && !(propagatedByConcreteSet ? ${n}))
     ) extras;
 
-  env = checkedPython.withPackages (ps:
-    lib.attrValues concretePackages ++ filterExtras (extraPythonPackages ps));
+  env = checkedPython.withPackages (
+    ps: lib.attrValues concretePackages ++ filterExtras (extraPythonPackages ps)
+  );
 
   # Builds a new environment that contains all HLD-managed packages,
   # extraPythonPackages, plus whatever the caller adds.  The caller only needs
@@ -659,11 +714,14 @@ let
   #
   # Usage:
   #   result.extendEnv (ps: with ps; [ matplotlib scikit-learn ])
-  extendEnv = morePkgs:
-    checkedPython.withPackages (ps:
+  extendEnv =
+    morePkgs:
+    checkedPython.withPackages (
+      ps:
       lib.attrValues concretePackages
       ++ filterExtras (extraPythonPackages ps)
-      ++ filterExtras (morePkgs ps));
+      ++ filterExtras (morePkgs ps)
+    );
 
   devShell = pkgs.mkShell {
     packages = [ env ];
@@ -680,7 +738,26 @@ assert _checkCudaCompiler;
 assert _checkBinAvailable;
 
 {
-  python   = checkedPython;
+  python = checkedPython;
   packages = concretePackages;
   inherit env devShell extendEnv;
+
+  # Per-package test scripts for all HLDs that have one.
+  # Each entry is { name = "flash-attn"; script = /nix/store/...-manual_debug.py; }.
+  # Used by test.nix to automatically discover and run per-package tests.
+  testScripts = lib.filter (e: e != null) (
+    map (
+      hld:
+      let
+        s = hld.testScript or null;
+      in
+      if s != null then
+        {
+          name = hld.packageName;
+          script = s;
+        }
+      else
+        null
+    ) (lib.attrValues allHLDs)
+  );
 }
