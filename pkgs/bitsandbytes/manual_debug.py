@@ -12,17 +12,13 @@ def print_section(title):
 def main(cuda_available: bool):
     print_section("bitsandbytes")
 
-    try:
-        import bitsandbytes as bnb
+    import bitsandbytes as bnb
 
-        print(f"  version : {getattr(bnb, '__version__', 'unknown')}")
-    except ImportError as exc:
-        print(f"  SKIP - bitsandbytes not installed ({exc})")
-        return 0
+    print(f"  version : {getattr(bnb, '__version__', 'unknown')}")
 
     if not cuda_available:
         print("  SKIP - bitsandbytes requires CUDA")
-        return 0
+        return "skip"
 
     # --- 4-bit quantization ---
     weight = torch.randn(128, 256, dtype=torch.float16, device="cuda")

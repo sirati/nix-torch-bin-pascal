@@ -12,18 +12,14 @@ def print_section(title):
 def main(cuda_available: bool):
     print_section("causal-conv1d")
 
-    try:
-        import causal_conv1d as _cc1d_mod
-        from causal_conv1d import causal_conv1d_fn
+    import causal_conv1d as _cc1d_mod
+    from causal_conv1d import causal_conv1d_fn
 
-        print(f"  version : {getattr(_cc1d_mod, '__version__', 'unknown')}")
-    except ImportError as exc:
-        print(f"  SKIP - causal-conv1d not installed ({exc})")
-        return 0
+    print(f"  version : {getattr(_cc1d_mod, '__version__', 'unknown')}")
 
     if not cuda_available:
         print("  SKIP - causal-conv1d requires CUDA")
-        return 0
+        return "skip"
 
     batch, dim, seqlen, width = 4, 64, 256, 4
     dtype = torch.float32

@@ -3,7 +3,10 @@
 Test runner for per-package manual_debug.py scripts.
 
 Discovers and runs test scripts passed via --test-scripts or --pkg-module.
-Each script must expose a main(cuda_available: bool) -> int function.
+Each script must expose a main(cuda_available: bool) function that returns:
+  0       – all tests passed
+  "skip"  – tests were skipped (package not installed or no CUDA)
+  non-zero int – test failure
 
 Usage (full suite via test.nix):
     python3 test-runner/main.py --test-scripts torch:/nix/store/.../manual_debug.py ...
@@ -46,12 +49,9 @@ def detect_cuda():
 def parse_script_arg(arg):
     """Parse a 'name:path' or plain 'path' argument into (name, path)."""
     if ":" in arg:
-        # Find the first colon that's NOT part of a path (e.g. /nix/store/...)
-        # Format is "package-name:/nix/store/..."
         name, _, path = arg.partition(":")
         return name, path
     else:
-        # Bare path — derive name from filename's parent dir
         return os.path.basename(os.path.dirname(arg)), arg
 
 
@@ -83,13 +83,19 @@ def main():
         return 0
 
     # Run each test script
+    passed = []
+    skipped = []
     failures = []
     for name, script_path in scripts:
         try:
             mod = load_test_module(script_path)
             result = mod.main(cuda_available)
-            if result and result != 0:
+            if result == "skip":
+                skipped.append(name)
+            elif result and result != 0:
                 failures.append(name)
+            else:
+                passed.append(name)
         except AssertionError as exc:
             print(f"\n\u2717 Assertion failed in {name}: {exc}", file=sys.stderr)
             failures.append(name)
@@ -100,13 +106,15 @@ def main():
 
     # Summary
     print_section("Summary")
+    if passed:
+        print(f"  \u2713 {len(passed)} passed: {', '.join(passed)}")
+    if skipped:
+        print(f"  \u2014 {len(skipped)} skipped: {', '.join(skipped)}")
     if failures:
-        print(f"  \u2717 {len(failures)} test(s) failed:")
-        for name in failures:
-            print(f"      - {name}")
+        print(f"  \u2717 {len(failures)} failed: {', '.join(failures)}")
         return 1
     else:
-        print(f"  \u2713 All {len(scripts)} test(s) passed!")
+        print(f"\n  All done! ({len(passed)} passed, {len(skipped)} skipped)")
         return 0
 
 

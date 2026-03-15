@@ -12,18 +12,14 @@ def print_section(title):
 def main(cuda_available: bool):
     print_section("flash-attn")
 
-    try:
-        import flash_attn as _fa_mod
-        from flash_attn import flash_attn_func
+    import flash_attn as _fa_mod
+    from flash_attn import flash_attn_func
 
-        print(f"  version : {getattr(_fa_mod, '__version__', 'unknown')}")
-    except ImportError as exc:
-        print(f"  SKIP - flash-attn not installed ({exc})")
-        return 0
+    print(f"  version : {getattr(_fa_mod, '__version__', 'unknown')}")
 
     if not cuda_available:
         print("  SKIP - flash-attn requires CUDA")
-        return 0
+        return "skip"
 
     device = "cuda"
     dtype = torch.float16

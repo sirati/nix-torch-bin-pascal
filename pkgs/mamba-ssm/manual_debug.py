@@ -12,17 +12,13 @@ def print_section(title):
 def main(cuda_available: bool):
     print_section("mamba-ssm")
 
-    try:
-        import mamba_ssm
+    import mamba_ssm
 
-        print(f"  version : {getattr(mamba_ssm, '__version__', 'unknown')}")
-    except ImportError as exc:
-        print(f"  SKIP - mamba-ssm not installed ({exc})")
-        return 0
+    print(f"  version : {getattr(mamba_ssm, '__version__', 'unknown')}")
 
     if not cuda_available:
         print("  SKIP - mamba-ssm requires CUDA")
-        return 0
+        return "skip"
 
     from mamba_ssm import Mamba
 

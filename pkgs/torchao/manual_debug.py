@@ -12,17 +12,13 @@ def print_section(title):
 def main(cuda_available: bool):
     print_section("torchao")
 
-    try:
-        import torchao
+    import torchao
 
-        print(f"  version : {getattr(torchao, '__version__', 'unknown')}")
-    except ImportError as exc:
-        print(f"  SKIP - torchao not installed ({exc})")
-        return 0
+    print(f"  version : {getattr(torchao, '__version__', 'unknown')}")
 
     if not cuda_available:
         print("  SKIP - torchao requires CUDA")
-        return 0
+        return "skip"
 
     import torch.nn as nn
     from torchao.quantization import Int8WeightOnlyConfig, quantize_
@@ -40,8 +36,8 @@ def main(cuda_available: bool):
     assert out_baseline.shape == (4, 64)
     print(f"  \u2713 baseline forward pass  shape={tuple(out_baseline.shape)}")
 
-    # Quantize in-place
-    quantize_(model, Int8WeightOnlyConfig())
+    # Quantize in-place (use v2 API)
+    quantize_(model, Int8WeightOnlyConfig(version=2))
     out_quantized = model(x)
     assert out_quantized.shape == (4, 64), f"Unexpected shape {out_quantized.shape}"
     assert not out_quantized.isnan().any(), "Quantized output contains NaN"
