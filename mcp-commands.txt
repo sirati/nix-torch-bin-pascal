@@ -1,0 +1,6 @@
+systemd-run --scope -p MemoryMax=1G -p MemorySwapMax=2G mcp-language-server --workspace ./ --lsp nil -- --stdio
+systemd-run --scope -p MemoryMax=1G -p MemorySwapMax=2G mcp-language-server --workspace ./ --lsp nixd
+systemd-run --scope -p MemoryMax=1G -p MemorySwapMax=2G mcp-language-server --workspace ./ --lsp ruff
+systemd-run --scope -p MemoryMax=1G -p MemorySwapMax=2G mcp-language-server --workspace ./ --lsp vscode-json-languageserver -- --stdio
+systemd-run --scope -p MemoryMax=1G -p MemorySwapMax=2G mcp-language-server --workspace ./ --lsp bash-language-server -- start
+systemd-run --scope -p MemoryMax=1G -p MemorySwapMax=2G mcp-language-server --workspace ./ --lsp basedpyright-langserver -- --stdio

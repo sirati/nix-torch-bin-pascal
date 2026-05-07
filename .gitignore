@@ -64,3 +64,5 @@ TODO.md
 tmp/
 temp/
 *.tmp
+
+SECRET*

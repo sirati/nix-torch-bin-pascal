@@ -1,0 +1,22 @@
+# Release tags for which the GitHub API returned no 'digest' on at least
+# one wheel asset.  Binary hashes were still generated for the assets that
+# did have digests.  Re-run the generator once GitHub backfills the rest.
+
+0.43.2
+0.43.1
+0.43.0
+0.42.0
+0.41.0
+0.40.0
+0.39.1
+0.38.0
+0.37.0
+0.36.0
+
+# Release tags skipped as too old (published year <= cutoff year).
+# These pre-date GitHub's digest feature and will never have API-provided
+# hashes.  They are intentionally not fetched.
+
+0.35.0
+0.34.0
+0.33.0

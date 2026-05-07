@@ -1,0 +1,17 @@
+# Release tags for which the GitHub API returned no 'digest' on at least
+# one wheel asset.  Binary hashes were still generated for the assets that
+# did have digests.  Re-run the generator once GitHub backfills the rest.
+
+v1.5.0.post8
+v1.4.0
+v1.3.0.post1
+v1.2.2.post1
+v1.2.1
+v1.2.0.post2
+v1.1.3.post1
+v1.1.2.post1
+v1.1.1
+v1.1.0
+v1.0.2
+v1.0.1
+v1.0.0

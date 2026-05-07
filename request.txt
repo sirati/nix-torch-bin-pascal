@@ -1,0 +1,17 @@
+update and after finishing the request of the message continue working on ./refactor_immediate_todo.md
+keep in mind you longer term impl plan ./refactor_impl.md
+always remove done work from the immediate todos.
+
+your documented your impl in ./impl-overview.md
+
+if there are no more immediate todos, continue working on ./refactor_impl.md and after finishing a session, update the immediate todos that were not completed during this session, but for which you have already done thinking and planning, so that this thinking effort is not lost.
+
+as a last step before finishing a session, update the todo and your impl file to remove done tasks. they should not contain documentation.
+
+In order to make sure of the current way nixpkgs deals with python packages, please refer to the source linked in ./upstream-refs.md.
+
+never read files inside of /binary-hashes/ or /source-hashes/ directories. They do not contain any useful information and eat up context space.
+
+the ground trust of the goal is written in ./refactor_plan.md. The human also maintains a todo file for things that needs to be worked on: ./human-todo-notes.md. do not modify these.
+
+the specific HDL refactor to deal with non HDL python packages dependencies for now is indefinitely postponed. Keep the info but do not start doing it.
