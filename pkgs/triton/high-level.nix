@@ -74,7 +74,7 @@ in
   buildBin = { pkgs, cudaPackages, cudaLabel, resolvedDeps, version, mkOverlayInfo ? null, wrappers ? null }:
     let
       perVersionPath = ./binary-hashes + "/v${version}.nix";
-      legacyAnyPath  = ./binary-hashes + "/any.nix";
+      legacyAnyPath  = ./binary-hashes + "/any.nix"; # todo remove this now used
 
       # Prefer the per-version file (new layout); fall back to the legacy
       # any.nix during the transition before gen-hashes has been re-run.

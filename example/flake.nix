@@ -14,10 +14,8 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
-    # Replace with the real URL once the repo is public, or use a local path:
-    #   torch-bin.url = "path:/path/to/nix-torch-bin-pascal";
-    torch-bin.url = "github:your-org/nix-torch-bin-pascal";
-
+    
+    torch-bin.url = "github:sirati/nix-torch-bin-pascal";
     # Keep both flakes on the same nixpkgs revision to avoid duplicate
     # dependencies in the closure.
     torch-bin.inputs.nixpkgs.follows = "nixpkgs";
