@@ -3,7 +3,7 @@
 
   cu12 = {
     "2.10" = {
-      "3.11" = {
+      py311 = {
         linux = {
           x86_64 = {
             name = "rwkv7_kernels-0.1.0-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl";
@@ -12,7 +12,7 @@
           };
         };
       };
-      "3.13" = {
+      py313 = {
         linux = {
           x86_64 = {
             name = "rwkv7_kernels-0.1.0-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl";
