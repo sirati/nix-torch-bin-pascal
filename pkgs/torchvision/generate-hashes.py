@@ -1,16 +1,18 @@
 """
-torch generate-hashes configuration module.
+torchvision generate-hashes configuration module.
 
 Imported by the shared entry point ``generate-hashes/main.py``.
 Do NOT add a main() here.
 
-torch wheels are distributed via download.pytorch.org per CUDA variant and per
-Python version; the whole flow lives in ``generate-hashes/torch_website.py``.
-This module only supplies the package-specific config.
+torchvision wheels are distributed via download.pytorch.org per CUDA variant
+and per Python version (cp312-cp312, etc.), exactly like torch — the whole flow
+lives in ``generate-hashes/torch_website.py``; this module only supplies the
+package-specific config.  torchvision depends on a matching torch at runtime;
+that wiring lives in high-level.nix (highLevelDeps), not here.
 
 Invocation (from project root):
-  nix run .#default.torch.gen-hashes [-- --cuda cu126]
-  nix run .#default.torch.gen-hashes [-- --cuda cu128]
+  nix run .#default.torchvision.gen-hashes [-- --cuda cu126]
+  nix run .#default.torchvision.gen-hashes [-- --cuda cu128]
 
 Options (handled by run() below):
   --cuda VARIANT   CUDA variant to generate (e.g. cu126, cu128).
@@ -31,11 +33,12 @@ from torch_website import TorchWebsiteHashGen
 # ORIGIN_TYPE ("torch-website") is injected by makeGenHashesApp from the HLD.
 
 _GEN = TorchWebsiteHashGen(
-    package="torch",
+    package="torchvision",
     output_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), "binary-hashes"),
     cuda_variants=["cu126", "cu128", "cu130", "cu132"],
-    # torch's pre-2.0 wheels used an incompatible layout; keep only torch >= 2.
-    min_major=2,
+    # A brand-new CUDA label may exist upstream before any wheel is published;
+    # write an empty (but valid) hash file rather than aborting the run.
+    allow_empty=True,
 )
 
 

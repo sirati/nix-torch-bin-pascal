@@ -44,7 +44,7 @@ from source_fetcher import (
     source_hash_exists,
     write_source_hash_file,
 )
-from source_torchao import TorchaoWheelSource
+from source_pytorch_org import PyTorchOrgWheelSource
 
 # Source hashes are available (GitHub releases with submodules).
 WITH_SUBMODULES = True
@@ -94,7 +94,7 @@ HEADER_TEMPLATE = """\
 
 
 def _parse_wheel(entry) -> dict | None:
-    """Map a TorchaoWheelSource entry to the path dict for nesting."""
+    """Map a PyTorchOrgWheelSource entry to the path dict for nesting."""
     # entry.name has the form:
     #   torchao-0.16.0-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
     import re
@@ -135,7 +135,7 @@ def _parse_wheel(entry) -> dict | None:
 
 def _generate_variant(cuda_variant: str) -> None:
     print(f"\n=== {cuda_variant} ===")
-    source = TorchaoWheelSource(cuda_variant=cuda_variant, min_version="0.10.0")
+    source = PyTorchOrgWheelSource("torchao", cuda_variant, stable_abi=True, min_version="0.10.0")
 
     entries = []
     skipped = 0
