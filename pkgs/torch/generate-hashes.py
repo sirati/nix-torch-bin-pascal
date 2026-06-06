@@ -49,6 +49,9 @@ VARIANTS = {
     "cu130": {
         "source_url": "https://download.pytorch.org/whl/cu130/torch/",
     },
+    "cu132": {
+        "source_url": "https://download.pytorch.org/whl/cu132/torch/",
+    },
 }
 
 VERSION_FILTER = None

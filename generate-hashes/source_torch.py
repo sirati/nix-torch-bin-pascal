@@ -165,8 +165,11 @@ class _HrefParser(HTMLParser):
         # Wheel name without the CUDA build tag (used as the Nix store name).
         name = f"torch-{version}-{abitag}-{abitag}-{platform}.whl"
 
-        # Full URL taken directly from the href so %2B and the sha256
-        # fragment are preserved exactly.
-        url = f"https://download.pytorch.org{href}"
+        # Build the URL from the matched /whl/...#sha256=... substring rather
+        # than the raw href.  Upstream now serves absolute hrefs pointing at a
+        # different host (download-r2.pytorch.org); m.group(0) is the relative
+        # path-and-fragment portion, so prepending the canonical host keeps
+        # %2B and the sha256 fragment intact and the URL stable.
+        url = f"https://download.pytorch.org{m.group(0)}"
 
         self.entries.append(WheelEntry(name=name, url=url, hexhash=hexhash))

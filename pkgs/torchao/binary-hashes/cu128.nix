@@ -81,4 +81,13 @@
       };
     };
   };
+  "0.17.0" = {
+    linux = {
+      x86_64 = {
+        name = "torchao-0.17.0-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl";
+        url = "https://download.pytorch.org/whl/cu128/torchao-0.17.0%2Bcu128-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl#sha256=ceea15b9b14d1fc20029a89dddcc4dd2d9aeef9a749c8c9f8437ffb81aa443aa";
+        hash = "sha256-zuoVubFNH8IAKaid3cxN0tmu75p0nIyfhDf/uBqkQ6o=";
+      };
+    };
+  };
 }

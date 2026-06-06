@@ -810,4 +810,153 @@
       };
     };
   };
+  "2.11.0" = {
+    py310 = {
+      linux = {
+        aarch64 = {
+          name = "torch-2.11.0-cp310-cp310-manylinux_2_28_aarch64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp310-cp310-manylinux_2_28_aarch64.whl#sha256=5ac6e34681d5a0e527edb741b38254899cd03087a7dd7e841791a4ee0a5e7011";
+          hash = "sha256-WsbjRoHVoOUn7bdBs4JUiZzQMIen3X6EF5Gk7gpecBE=";
+        };
+        x86_64 = {
+          name = "torch-2.11.0-cp310-cp310-manylinux_2_28_x86_64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp310-cp310-manylinux_2_28_x86_64.whl#sha256=72d53f3176a69cc20710c4ecb95f7dc4c6ba10c4e4eda45b8396ee79ee40f75a";
+          hash = "sha256-ctU/MXamnMIHEMTsuV99xMa6EMTk7aRbg5buee5A91o=";
+        };
+      };
+      windows = {
+        x86_64 = {
+          name = "torch-2.11.0-cp310-cp310-win_amd64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp310-cp310-win_amd64.whl#sha256=7c792fe95ad5edaf622cf9e4f5573f5aecf2bc0654c7e866eda6134088f95d72";
+          hash = "sha256-fHkv6VrV7a9iLPnk9Vc/WuzyvAZUx+hm7aYTQIj5XXI=";
+        };
+      };
+    };
+    py311 = {
+      linux = {
+        aarch64 = {
+          name = "torch-2.11.0-cp311-cp311-manylinux_2_28_aarch64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp311-cp311-manylinux_2_28_aarch64.whl#sha256=d76f08e212285bd84c4c5a3472417f8eb4ee72e4067a604f7508dbfa2119771f";
+          hash = "sha256-128I4hIoW9hMTFo0ckF/jrTucuQGemBPdQjb+iEZdx8=";
+        };
+        x86_64 = {
+          name = "torch-2.11.0-cp311-cp311-manylinux_2_28_x86_64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp311-cp311-manylinux_2_28_x86_64.whl#sha256=c9a7ca4c74fae10a58e6175b4b2cea953f9322bb6562bbf339ad6a05f52190ad";
+          hash = "sha256-yafKTHT64QpY5hdbSyzqlT+TIrtlYrvzOa1qBfUhkK0=";
+        };
+      };
+      windows = {
+        x86_64 = {
+          name = "torch-2.11.0-cp311-cp311-win_amd64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp311-cp311-win_amd64.whl#sha256=90ef0c2454e5296a9fb021ddd42252e4ce1abe2c0a4988a173ef90a6cded0bf5";
+          hash = "sha256-kO8MJFTlKWqfsCHd1CJS5M4aviwKSYihc++Qps3tC/U=";
+        };
+      };
+    };
+    py312 = {
+      linux = {
+        aarch64 = {
+          name = "torch-2.11.0-cp312-cp312-manylinux_2_28_aarch64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp312-cp312-manylinux_2_28_aarch64.whl#sha256=9c8f38efee365cb9d334de8a83ce52fc7e5fc9e5a7b0853285efa1b69e00b0f2";
+          hash = "sha256-nI847+42XLnTNN6Kg85S/H5fyeWnsIUyhe+htp4AsPI=";
+        };
+        x86_64 = {
+          name = "torch-2.11.0-cp312-cp312-manylinux_2_28_x86_64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp312-cp312-manylinux_2_28_x86_64.whl#sha256=d252cf975fb18c94a85336323ad425f473df56dab35a44b00399bd70c7a3b997";
+          hash = "sha256-0lLPl1+xjJSoUzYyOtQl9HPfVtqzWkSwA5m9cMejuZc=";
+        };
+      };
+      windows = {
+        x86_64 = {
+          name = "torch-2.11.0-cp312-cp312-win_amd64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp312-cp312-win_amd64.whl#sha256=7c78215c3af4f62e63f2b2e360f1722fc719b0853c7ac22666483d9810613a4c";
+          hash = "sha256-fHghXDr09i5j8rLjYPFyL8cZsIU8esImZkg9mBBhOkw=";
+        };
+      };
+    };
+    py313 = {
+      linux = {
+        aarch64 = {
+          name = "torch-2.11.0-cp313-cp313-manylinux_2_28_aarch64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp313-cp313-manylinux_2_28_aarch64.whl#sha256=7db3580106bba044da5b8950f3fb8fe5f31999eaab3f6a3aa2ac5d202c3684d2";
+          hash = "sha256-fbNYAQa7oETaW4lQ8/uP5fMZmeqrP2o6oqxdICw2hNI=";
+        };
+        x86_64 = {
+          name = "torch-2.11.0-cp313-cp313-manylinux_2_28_x86_64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp313-cp313-manylinux_2_28_x86_64.whl#sha256=db964b33c55035a72ab3e2162287af8f1cc276039c65d015740cc88c26dcedf7";
+          hash = "sha256-25ZLM8VQNacqs+IWIoevjxzCdgOcZdAVdAzIjCbc7fc=";
+        };
+      };
+      windows = {
+        x86_64 = {
+          name = "torch-2.11.0-cp313-cp313-win_amd64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp313-cp313-win_amd64.whl#sha256=6f367e62fd81b75cdf23ca4b75ced834d2db2cf98d1588ac935bde345de9de23";
+          hash = "sha256-bzZ+Yv2Bt1zfI8pLdc7YNNLbLPmNFYisk1veNF3p3iM=";
+        };
+      };
+    };
+    py313-freethreaded = {
+      linux = {
+        aarch64 = {
+          name = "torch-2.11.0-cp313t-cp313t-manylinux_2_28_aarch64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp313-cp313t-manylinux_2_28_aarch64.whl#sha256=cd1cf1005c5fe419194ee294b7b584ba5ad0f2fb1778b3fe5a7b9c3f4617ddbc";
+          hash = "sha256-zRzxAFxf5BkZTuKUt7WEulrQ8vsXeLP+WnucP0YX3bw=";
+        };
+        x86_64 = {
+          name = "torch-2.11.0-cp313t-cp313t-manylinux_2_28_x86_64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp313-cp313t-manylinux_2_28_x86_64.whl#sha256=74b628dbc71603977b09f4e140792c6e997081a35ef3421555f3f6e201b81210";
+          hash = "sha256-dLYo28cWA5d7CfThQHksbplwgaNe80IVVfP24gG4EhA=";
+        };
+      };
+      windows = {
+        x86_64 = {
+          name = "torch-2.11.0-cp313t-cp313t-win_amd64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp313-cp313t-win_amd64.whl#sha256=c2a5984deba8e001d166bf9cb83b8351f63a28b009e1a2fa0e4bbf08c90b259b";
+          hash = "sha256-wqWYTeuo4AHRZr+cuDuDUfY6KLAJ4aL6Dku/CMkLJZs=";
+        };
+      };
+    };
+    py314 = {
+      linux = {
+        aarch64 = {
+          name = "torch-2.11.0-cp314-cp314-manylinux_2_28_aarch64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp314-cp314-manylinux_2_28_aarch64.whl#sha256=baa52f7b8a53cab16587b10f1c27d1000ca033f97236878b685b75d5a1b92408";
+          hash = "sha256-uqUve4pTyrFlh7EPHCfRAAygM/lyNoeLaFt11aG5JAg=";
+        };
+        x86_64 = {
+          name = "torch-2.11.0-cp314-cp314-manylinux_2_28_x86_64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp314-cp314-manylinux_2_28_x86_64.whl#sha256=d389a850677f0d24dafae1573644034428d8d3b9c80b51d55ba62fed7e6c8777";
+          hash = "sha256-04moUGd/DSTa+uFXNkQDRCjY07nIC1HVW6Yv7X5sh3c=";
+        };
+      };
+      windows = {
+        x86_64 = {
+          name = "torch-2.11.0-cp314-cp314-win_amd64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp314-cp314-win_amd64.whl#sha256=d6c21797ff75271b4fbdd905e2d703be4ecea5ea5bbdde4d1c201e9c71bc411d";
+          hash = "sha256-1sIXl/91JxtPvdkF4tcDvk7Opepbvd5NHCAenHG8QR0=";
+        };
+      };
+    };
+    py314-freethreaded = {
+      linux = {
+        aarch64 = {
+          name = "torch-2.11.0-cp314t-cp314t-manylinux_2_28_aarch64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp314-cp314t-manylinux_2_28_aarch64.whl#sha256=06849e9311dbb0617c97557d9c26c99a9e1c4f2ac9cb8e9b6d9b420d522acb91";
+          hash = "sha256-BoSekxHbsGF8l1V9nCbJmp4cTyrJy46bbZtCDVIqy5E=";
+        };
+        x86_64 = {
+          name = "torch-2.11.0-cp314t-cp314t-manylinux_2_28_x86_64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp314-cp314t-manylinux_2_28_x86_64.whl#sha256=169a9987e1f84f0c5eee07544b3a34827a163ac9180e23abf0c3548f1335762c";
+          hash = "sha256-FpqZh+H4Twxe7gdUSzo0gnoWOskYDiOr8MNUjxM1diw=";
+        };
+      };
+      windows = {
+        x86_64 = {
+          name = "torch-2.11.0-cp314t-cp314t-win_amd64.whl";
+          url = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp314-cp314t-win_amd64.whl#sha256=d86c125d720c2c368c53bd1a4ef062916d91fa965c10448c74c78b5d039faf2d";
+          hash = "sha256-2GwSXXIMLDaMU70aTvBikW2R+pZcEESMdMeLXQOfry0=";
+        };
+      };
+    };
+  };
 }
