@@ -179,10 +179,11 @@ let
   };
 
   # ── Test: sonic-moe, Python 3.13, CUDA 12.8 ──────────────────────────────
-  # sonic-moe pins torch <= 2.9.x and nvidia-cutlass-dsl 4.4.2 (quack-kernels
-  # resolves to 0.4.x).  sonic-moe and quack-kernels are pure-Python source
-  # builds; nvidia-cutlass-dsl / apache-tvm-ffi / torch-c-dlpack-ext install
-  # from PyPI wheels.
+  # sonic-moe pins nvidia-cutlass-dsl 4.4.2 (quack-kernels resolves to 0.4.x).
+  # Upstream's torch <= 2.9.1 ceiling is deliberately lifted (pure-Python,
+  # CuTeDSL-JIT kernels; verified on torch 2.10).  sonic-moe and quack-kernels
+  # are pure-Python source builds; nvidia-cutlass-dsl / apache-tvm-ffi /
+  # torch-c-dlpack-ext install from PyPI wheels.
   testSonicMoeCu128Result = concretise {
     inherit pkgs;
     mlPackages = [
@@ -191,7 +192,7 @@ let
     ];
     python = "3.13";
     cuda = "12.8";
-    torch = "2.9";
+    torch = "2.10";
     allowBuildingFromSource = true;
   };
 

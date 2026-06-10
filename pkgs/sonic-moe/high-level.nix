@@ -10,12 +10,16 @@
 # py3-none-any and add nothing over the source build).
 #
 # Upstream pins (sonic-moe 0.1.2, encoded in versionConstraints below):
-#   torch              >= 2.7.1, <= 2.9.x
 #   nvidia-cutlass-dsl == 4.4.2
 #   quack-kernels      >= 0.3.11 (and <= 0.4.x, because quack 0.5.0 requires
 #                       nvidia-cutlass-dsl >= 4.5.2, conflicting with the
 #                       == 4.4.2 pin)
 #   Python             >= 3.12  (gated in getVersions)
+#
+# Upstream also pins torch <= 2.9.1, but sonic-moe is pure Python and all its
+# GPU code is CuTeDSL-JIT-compiled (no torch C++ ABI dependency); fwd+bwd was
+# verified working on torch 2.10.0 (RTX 5090).  We therefore keep only the
+# lower bound here and strip the metadata ceiling in overlay-source.nix.
 #
 # hldHelpers and packageName are injected automatically by pkgs/default.nix.
 #
@@ -26,7 +30,6 @@
 #     mlPackages = with pp; [ sonic-moe ];  # deps implied automatically
 #     python   = "3.13";
 #     cuda     = "12.8";
-#     torch    = "2.9";                # sonic-moe does not support 2.10+
 #     allowBuildingFromSource = true;  # required — source-only package
 #   };
 
@@ -60,7 +63,8 @@ assert hldHelpers.isHLD nvidia-cutlass-dsl;
 
   # ── Dependency version constraints ─────────────────────────────────────────
   versionConstraints = {
-    torch = { minVersion = "2.7.1"; maxVersion = "2.9.99"; };
+    # Upstream caps torch at 2.9.1; deliberately not enforced (see header).
+    torch = { minVersion = "2.7.1"; };
     nvidia-cutlass-dsl = { minVersion = "4.4.2"; maxVersion = "4.4.99"; };
     quack-kernels = { minVersion = "0.3.11"; maxVersion = "0.4.99"; };
   };
