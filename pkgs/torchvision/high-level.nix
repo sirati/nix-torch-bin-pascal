@@ -59,6 +59,12 @@ in
   # for the requested Python interpreter.
   getVersions = hldHelpers.getVersionsFromCudaFiles ./binary-hashes;
 
+  # 1:1 torch-series mapping consumed by concretise's _selectVersion so that
+  # version selection only considers torchvision versions built against the
+  # requested torch series (canBuildBin alone cannot fix a wrong selection —
+  # there is no source-build fallback).
+  data = { inherit requiredTorchSeries; };
+
   highLevelDeps = { inherit torch; };
 
   # A pre-built wheel is usable only when BOTH hold:

@@ -391,9 +391,17 @@ let
       allVersionsRaw = hld.getVersions cudaLabel pyVer;
       # For torch, restrict selection to the caller-specified major.minor series.
       # Binary wheels are not forward-compatible across minor versions.
+      #
+      # HLDs whose versions map 1:1 to a torch series (torchvision, torchaudio)
+      # declare data.requiredTorchSeries (version -> "2.X"); their selection is
+      # restricted the same way.  Without this, selection would pick the newest
+      # wheel regardless of the requested torch series and canBuildBin would
+      # then reject it, dead-ending in a buildSource that does not exist.
       allVersions =
         if hld.packageName == "torch" then
           lib.filter (v: _majorMinorOf v == torch) allVersionsRaw
+        else if (hld.data or { }) ? requiredTorchSeries then
+          lib.filter (v: hld.data.requiredTorchSeries v == torch) allVersionsRaw
         else
           allVersionsRaw;
       constrainedVersions = applyVersionConstraints hld.packageName allVersions;

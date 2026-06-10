@@ -49,6 +49,11 @@ in
   # for the requested Python interpreter.
   getVersions = hldHelpers.getVersionsFromCudaFiles ./binary-hashes;
 
+  # 1:1 torch-series mapping (torchaudio shares torch's major.minor) consumed
+  # by concretise's _selectVersion so that version selection only considers
+  # torchaudio versions built against the requested torch series.
+  data = { requiredTorchSeries = majorMinor; };
+
   highLevelDeps = { inherit torch; };
 
   # A pre-built wheel is usable only when BOTH hold:
