@@ -121,7 +121,7 @@ in
   # The shared main (generate-hashes/main.py) is the single entry point for
   # all packages.  It loads the per-package generate-hashes.py as a
   # configuration module via --pkg-module and dispatches based on
-  # ORIGIN_TYPE ("github-releases" or "torch-website").
+  # ORIGIN_TYPE ("github-releases", "torch-website" or "pypi").
   #
   # Usage in flake.nix:
   #   genHashesLib = import ./generate-hashes/lib.nix { inherit pkgs; };

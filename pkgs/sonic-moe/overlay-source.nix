@@ -1,0 +1,34 @@
+# sonic-moe source build derivation — thin wrapper around buildSourcePackage.
+#
+# Pure-Python build (cudaSupport = false): all GPU kernels come from
+# quack-kernels/CuTeDSL and are JIT-compiled at runtime, so no nvcc / CUDA
+# libs are needed at build time.
+#
+# Arguments:
+#   overlayInfo         - common package context attrset from high-level.nix
+#   quack-kernels       - resolved quack-kernels derivation
+#   nvidia-cutlass-dsl  - resolved CuTeDSL derivation
+
+{ overlayInfo, quack-kernels, nvidia-cutlass-dsl }:
+
+let
+  buildSourcePackage =
+    (import ../../concretise/source-build-helpers.nix).buildSourcePackage;
+in
+buildSourcePackage {
+  inherit overlayInfo;
+  sourceHashesDir = ./source-hashes;
+
+  cudaSupport = false;
+
+  extraDependencies = [
+    quack-kernels
+    nvidia-cutlass-dsl
+  ];
+
+  # pname "sonic-moe" but the importable module is "sonicmoe".
+  # site-aware: importing sonicmoe pulls in cutlass, whose .pth-redirect
+  # layout is invisible to the plain-PYTHONPATH pythonImportsCheck hook.
+  pythonImportsCheck = [ "sonicmoe" ];
+  siteAwareImportsCheck = true;
+}

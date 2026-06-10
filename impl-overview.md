@@ -18,9 +18,11 @@ Optional fields with conditional defaults (depend on `originType`):
 
 `packageName` is injected from the directory name by `pkgs/default.nix`; HLD files never set it but may declare it in their argument list to use as a value.
 
-`originType` allowed values: `"github-releases"`, `"torch-website"`.  Current packages: causal-conv1d, flash-attn, mamba-ssm, bitsandbytes use `"github-releases"`; torch, triton, and torchao use `"torch-website"`.
+`originType` allowed values: `"github-releases"`, `"torch-website"`, `"pypi"`.  Current packages: causal-conv1d, flash-attn, mamba-ssm, bitsandbytes, rwkv7-kernels, quack-kernels, sonic-moe use `"github-releases"`; torch, triton, and torchao use `"torch-website"`; nvidia-cutlass-dsl, apache-tvm-ffi, torch-c-dlpack-ext use `"pypi"`.
 
 For `"github-releases"` packages, `mkChangelog` and `mkOverlayInfo` are auto-derived by `hld-type.nix` validate — HDL files need only provide `srcOwner` and `srcRepo`. `buildBin`/`buildSource` receive `mkOverlayInfo` from concretise via args (injected from the validated HLD), so they do not need to close over it locally.
+
+For `"pypi"` packages, `mkChangelog` defaults to the PyPI release page (`https://pypi.org/project/{pname}/{version}/`) and `mkOverlayInfo` to the standard factory.  Their generate-hashes modules define `run()` (dispatched like `"torch-website"` by `generate-hashes/main.py`) and use [`generate-hashes/source_pypi.py`](generate-hashes/source_pypi.py) (PyPI JSON API; sha256 digests come from the API, no downloads).
 
 For `"torch-website"` packages, `mkChangelog` and `mkOverlayInfo` must be provided explicitly in the HLD. `buildBin`/`buildSource` accept `mkOverlayInfo` as an optional arg (`? null`) for API consistency.
 
@@ -83,6 +85,8 @@ Steps:
 
 Both helpers unpack `overlayInfo` fields (`pkgs`, `cudaPackages`, `pname`, `srcOwner`, `srcRepo`, `version`, `basePkg`, `changelog`, `torch`) internally.
 
+`buildSourcePackage` accepts `cudaSupport ? true`; when `false` (pure-Python packages: quack-kernels, sonic-moe) it drops `cuda_nvcc` from build-system, the CUDA libs from buildInputs, and `CUDA_HOME` from env.
+
 ## Concretisation — store-path naming and duplicate-dep filtering
 
 `buildAndStamp` (in `concretise/default.nix`) builds the derivation (bin or source) and stamps it with:
@@ -136,6 +140,18 @@ Key properties:
 `overlay-bin.nix` builds a `buildPythonPackage` directly (does not use `wheel-helpers.nix` `buildBinWheel`, since the hash structure lacks the torchCompat and pyVer dimensions that `buildBinWheel` expects).
 
 `generate-hashes/source_torchao.py` provides the `TorchaoWheelSource` class (analogous to `TorchWheelSource` for torch and `TritonWheelSource` for triton).
+
+## sonic-moe stack (sonic-moe, quack-kernels, nvidia-cutlass-dsl, apache-tvm-ffi, torch-c-dlpack-ext)
+
+Dependency tree: sonic-moe → { torch, quack-kernels, nvidia-cutlass-dsl }; quack-kernels → { torch, nvidia-cutlass-dsl, apache-tvm-ffi, torch-c-dlpack-ext } (+ einops from nixpkgs).
+
+- **sonic-moe** (`pkgs/sonic-moe/`): pure-Python, SOURCE-ONLY (bitsandbytes pattern), bare GitHub tags (`0.1.2`, custom `mkChangelog`).  `getVersions` gates Python >= 3.12.  `versionConstraints` pin torch 2.7.1–2.9.x, nvidia-cutlass-dsl 4.4.x and quack-kernels 0.3.11–0.4.x (quack 0.5.0 needs cutlass-dsl >= 4.5.2, conflicting with sonic-moe's `== 4.4.2` pin).  `torchAgnostic = true`.
+- **quack-kernels** (`pkgs/quack-kernels/`): pure-Python, SOURCE-ONLY, v-prefixed tags (Dao-AILab/quack).  Import name is `quack`.  `torchAgnostic = true`.
+- **nvidia-cutlass-dsl** (`pkgs/nvidia-cutlass-dsl/`): BIN-ONLY (`"pypi"`); wheels ship proprietary prebuilt MLIR/NVVM binaries.  PyPI splits it into a metadata-only meta wheel + `libs-base` (per-CPython manylinux) + `libs-cu13` (added for cu130).  overlay-bin.nix also installs the pinned cuda-python/cuda-bindings/cuda-pathfinder chain (absent from nixpkgs; pins in `binary-hashes/cuda-deps-cu1{2,3}.nix`, refresh with `--regen-cuda-deps`).  Hash files: `v{version}.nix` = `{ meta; base = pyVer->os->arch; cu13? }`, custom `getVersions` in the HLD.  libs-base uses a `.pth`-redirect layout, so the import check is a site-aware `postInstall` check, not `pythonImportsCheck`.  `torchAgnostic = true`.
+- **apache-tvm-ffi** (`pkgs/apache-tvm-ffi/`): BIN-ONLY (`"pypi"`), `cudaAgnostic = true` (pure CPU lib, triton-style store stamp).  cp312-abi3 wheels are expanded to explicit pyVer entries at hash-generation time; layout matches `getVersionsFromAnyVersionFiles`.  Import name is `tvm_ffi`.
+- **torch-c-dlpack-ext** (`pkgs/torch-c-dlpack-ext/`): BIN-ONLY (`"pypi"`), `torchAgnostic = true`, dep torch.  Developed in apache/tvm-ffi.
+
+All three pypi overlays use `autoPatchelfHook` + `stdenv.cc.cc.lib` (standalone manylinux wheels dlopen/link libstdc++ without torch pre-loaded; `autoPatchelfIgnoreMissingDeps` where driver/torch libs resolve at runtime).
 
 ## Retry wrappers
 

@@ -22,6 +22,9 @@
 #   "github-releases"  – mkChangelog defaults to hldHelpers."github-release-tag"
 #                        srcOwner srcRepo; mkOverlayInfo defaults to the
 #                        standard factory from hldHelpers.mkOverlayInfo
+#   "pypi"             – mkChangelog defaults to the PyPI release page
+#                        (https://pypi.org/project/{pname}/{version}/);
+#                        mkOverlayInfo defaults to the standard factory
 #   "torch-website"    – mkChangelog and mkOverlayInfo are mandatory (no default)
 #
 # originType replaces the old hyphenated "origin-type" attribute name.
@@ -75,7 +78,8 @@ let
 
     originType = {
       description =
-        "string – origin type of the package; allowed values: " + ''"torch-website", "github-releases"'';
+        "string – origin type of the package; allowed values: "
+        + ''"torch-website", "github-releases", "pypi"'';
     };
 
     pname = {
@@ -287,10 +291,10 @@ let
         let
           ot = attrs.originType;
         in
-        (ot == "github-releases" || ot == "torch-website")
+        (ot == "github-releases" || ot == "torch-website" || ot == "pypi")
         || throw (
           "HLD '${packageName}': originType must be "
-          + "\"github-releases\" or \"torch-website\", got \"${ot}\""
+          + "\"github-releases\", \"torch-website\" or \"pypi\", got \"${ot}\""
         );
 
       # ── Dynamic defaults (depend on packageName) ───────────────────────
@@ -321,13 +325,15 @@ let
           attrs.mkChangelog
         else if attrs.originType == "github-releases" then
           hldHelpers."github-release-tag" attrs.srcOwner attrs.srcRepo
+        else if attrs.originType == "pypi" then
+          (v: "https://pypi.org/project/${resolvedPname}/${v}/")
         else
           throw ("HLD '${packageName}': mkChangelog is required when " + "originType = \"torch-website\"");
 
       resolvedMkOverlayInfo =
         if builtins.hasAttr "mkOverlayInfo" attrs then
           attrs.mkOverlayInfo
-        else if attrs.originType == "github-releases" then
+        else if attrs.originType == "github-releases" || attrs.originType == "pypi" then
           hldHelpers.mkOverlayInfo {
             pname = resolvedPname;
             nixpkgsAttr = resolvedNixpkgsAttr;

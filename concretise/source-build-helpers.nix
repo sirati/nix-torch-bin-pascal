@@ -45,6 +45,10 @@
 #                         per-package overrides of any field.  Default: {}.
 #
 #   OPTIONAL – build
+#   cudaSupport           bool; default true.  Set false for pure-Python
+#                         packages (e.g. quack-kernels, sonic-moe) — drops
+#                         cuda_nvcc from build-system, the CUDA libs from
+#                         buildInputs, and CUDA_HOME from env.
 #   fetchSubmodules       bool; default false.  Set true for flash-attn.
 #   postPatch             Shell script string; default "".
 #   preConfigure          Shell script string; default "".
@@ -66,6 +70,13 @@
 #                         e.g. "causal-conv1d" → [ "causal_conv1d" ]
 #                         Override explicitly when the module name differs
 #                         (e.g. pname "flash-attention" → [ "flash_attn" ]).
+#   siteAwareImportsCheck bool; default false.  When true the import check
+#                         processes .pth files (site.addsitedir) instead of
+#                         using the plain-PYTHONPATH pythonImportsCheck hook.
+#                         Needed when a dependency uses a .pth-redirect
+#                         layout (nvidia-cutlass-dsl): .pth files are honoured
+#                         in the final environment but not on the bare
+#                         PYTHONPATH that pythonImportsCheck uses.
 
 # No file-level argument: all inputs arrive via overlayInfo inside the call.
 {
@@ -79,6 +90,7 @@
       extraMeta ? { },
 
       # Optional – build
+      cudaSupport ? true,
       fetchSubmodules ? false,
       postPatch ? "",
       preConfigure ? "",
@@ -91,6 +103,7 @@
 
       # Optional – checks
       pythonImportsCheck ? null,
+      siteAwareImportsCheck ? false,
     }:
 
     let
@@ -172,8 +185,8 @@
       build-system = [
         pkgs.python3Packages.setuptools
         pkgs.python3Packages.ninja
-        cudaPackages.cuda_nvcc
       ]
+      ++ lib.optional cudaSupport cudaPackages.cuda_nvcc
       ++ extraBuildSystemPackages;
 
       nativeBuildInputs = [
@@ -184,7 +197,7 @@
       # libcurand is package-specific (flash-attn only); callers pass it
       # via extraBuildInputs.
       buildInputs =
-        (with cudaPackages; [
+        lib.optionals cudaSupport (with cudaPackages; [
           cuda_cudart # cuda_runtime.h, -lcudart
           cuda_cccl # thrust / cub headers
           libcusparse # cusparse.h
@@ -200,7 +213,7 @@
         # CUDA_HOME: points nvcc / extension build scripts at the toolkit
         # headers.  flash-attn sets CC/CXX/TORCH_CUDA_ARCH_LIST instead and
         # does not need CUDA_HOME.
-        lib.optionalAttrs useCudaHome {
+        lib.optionalAttrs (cudaSupport && useCudaHome) {
           CUDA_HOME = "${lib.getDev cudaPackages.cuda_nvcc}";
         }
         # Per-package FORCE_BUILD variable (not used by flash-attn).
@@ -214,7 +227,20 @@
       # No test suite that can run without a GPU.
       doCheck = false;
 
-      pythonImportsCheck = importsCheck;
+      pythonImportsCheck = if siteAwareImportsCheck then [ ] else importsCheck;
+
+      # Site-aware variant of pythonImportsCheck: addsitedir processes the
+      # .pth files of PYTHONPATH entries (and of $out) before importing.
+      postInstall = lib.optionalString siteAwareImportsCheck ''
+        echo "checking imports (site-aware): ${toString importsCheck}"
+        python -c "
+import os, site
+site.addsitedir('$out/${pkgs.python3.sitePackages}')
+for p in os.environ.get('PYTHONPATH', \"\").split(':'):
+    if p:
+        site.addsitedir(p)
+${lib.concatMapStrings (m: "import ${m}\n") importsCheck}"
+      '';
 
       inherit meta;
     };

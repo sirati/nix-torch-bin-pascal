@@ -36,7 +36,7 @@ Optional overrides for ``"github-releases"``:
     DIMENSIONS              list        – default DEFAULT_DIMENSIONS
     VERSION_SPEC            DimSpec     – default DEFAULT_VERSION_SPEC
 
-For ``"torch-website"`` packages:
+For ``"torch-website"`` and ``"pypi"`` packages:
 
     run()   callable  – called with no arguments after ``--pkg-module`` has
                         been removed from ``sys.argv``; the function parses
@@ -252,10 +252,10 @@ def main() -> None:
         args = p.parse_args()
         _run_github_release(module, github_repo, args)
 
-    elif origin_type == "torch-website":
+    elif origin_type in ("torch-website", "pypi"):
         if not hasattr(module, "run"):
             print(
-                f"Error: torch-website module {pre_args.pkg_module!r} must define run().",
+                f"Error: {origin_type} module {pre_args.pkg_module!r} must define run().",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -264,7 +264,7 @@ def main() -> None:
     else:
         print(
             f"Error: unknown origin type {origin_type!r} for {pre_args.pkg_module!r}. "
-            "Expected \"github-releases\" or \"torch-website\".",
+            "Expected \"github-releases\", \"torch-website\" or \"pypi\".",
             file=sys.stderr,
         )
         sys.exit(1)
