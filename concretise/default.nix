@@ -459,8 +459,34 @@ let
       # When false and allowBuildingFromSource is set, we fall back to
       # buildSource.
       binCompatible = version != null && hld.canBuildBin { inherit resolvedDeps version cudaLabel; };
+      # version == null means no version at all satisfies the merged
+      # versionConstraints for this (cudaLabel, pyVer).  Building from source
+      # cannot fix a version conflict, so this fails up front with the
+      # constraint diagnostic instead of falling through to buildSource
+      # (which would surface a misleading package-specific error).
+      noVersionDiagnostic =
+        let
+          c = allVersionConstraints.${hld.packageName} or { };
+        in
+        "concretise: no version of '${hld.packageName}' available "
+        + "for cudaLabel '${cudaLabel}' and Python ${python} (${pyVer})"
+        + (
+          if c != { } then
+            " after applying versionConstraints: ${builtins.toJSON c}"
+            + "; unconstrained versions: "
+            + (
+              if sel.allVersions == [ ] then
+                "none"
+              else
+                lib.concatStringsSep ", " (lib.sort lib.versionOlder sel.allVersions)
+            )
+          else
+            ""
+        );
       drv =
-        if binCompatible then
+        if version == null then
+          throw noVersionDiagnostic
+        else if binCompatible then
           hld.buildBin args
         else if allowBuildingFromSource then
           hld.buildSource args
@@ -468,21 +494,7 @@ let
           throw (
             "concretise: no usable pre-built wheel for '${hld.packageName}' "
             + "with cudaLabel '${cudaLabel}' and Python ${python} (${pyVer})"
-            + (
-              if version == null then
-                let
-                  c = allVersionConstraints.${hld.packageName} or { };
-                in
-                if c != { } then
-                  " (no binary version found after applying versionConstraints: "
-                  + "${builtins.toJSON c}; unconstrained versions: "
-                  + lib.concatStringsSep ", " (lib.sort lib.versionOlder sel.allVersions)
-                  + ")"
-                else
-                  " (no binary version found)"
-              else
-                " (version ${version} is ABI-incompatible with resolved dependencies)"
-            )
+            + " (version ${version} is ABI-incompatible with resolved dependencies)"
             + ". Set allowBuildingFromSource = true to build from source."
           );
       # Suffix appended to the Nix store-path name to make builds for different
