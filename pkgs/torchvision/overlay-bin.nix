@@ -47,7 +47,12 @@ pkgs.python3Packages.buildPythonPackage {
   build-system = [];
   buildInputs  = [];
 
-  dependencies = [ torch ];
+  # Upstream wheel metadata: numpy, torch, pillow.
+  dependencies = [
+    torch
+    pkgs.python3Packages.numpy
+    pkgs.python3Packages.pillow
+  ];
 
   doCheck = false;
 
