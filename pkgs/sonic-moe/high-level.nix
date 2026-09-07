@@ -10,10 +10,14 @@
 # py3-none-any and add nothing over the source build).
 #
 # Upstream pins (sonic-moe 0.1.2, encoded in versionConstraints below):
-#   nvidia-cutlass-dsl == 4.4.2
+#   nvidia-cutlass-dsl == 4.4.2  — kept as a lower bound only (the metadata
+#                       pin becomes a floor in overlay-source.nix): sonic-moe's
+#                       import, dispatch-split and production-equivalence
+#                       tests pass under nvidia-cutlass-dsl 4.8.0.dev0 with
+#                       quack-kernels 0.4.1 (torch 2.10.0, GB202)
 #   quack-kernels      >= 0.3.11 (and <= 0.4.x, because quack 0.5.0 requires
-#                       nvidia-cutlass-dsl >= 4.5.2, conflicting with the
-#                       == 4.4.2 pin)
+#                       nvidia-cutlass-dsl >= 4.5.2; kept until 0.5.x is
+#                       verified against sonic-moe)
 #   Python             >= 3.12  (gated in getVersions)
 #
 # Upstream also pins torch <= 2.9.1, but sonic-moe is pure Python and all its
@@ -65,7 +69,7 @@ assert hldHelpers.isHLD nvidia-cutlass-dsl;
   versionConstraints = {
     # Upstream caps torch at 2.9.1; deliberately not enforced (see header).
     torch = { minVersion = "2.7.1"; };
-    nvidia-cutlass-dsl = { minVersion = "4.4.2"; maxVersion = "4.4.99"; };
+    nvidia-cutlass-dsl = { minVersion = "4.4.2"; };
     quack-kernels = { minVersion = "0.3.11"; maxVersion = "0.4.99"; };
   };
 

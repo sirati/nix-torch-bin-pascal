@@ -21,6 +21,16 @@ buildSourcePackage {
 
   cudaSupport = false;
 
+  # CuTeDSL 4.6 moved ThrMma / ThrCopy out of `cutlass.cute.core`; quack
+  # < 0.5 still annotates with `cute.core.ThrMma` / `cute.core.ThrCopy`
+  # (evaluated at import time) and so cannot import on newer DSLs.  Both
+  # names have been exported at `cutlass.cute` level since 4.4, which is
+  # what quack itself uses from 0.6 on — rewrite the annotations to that
+  # spelling.  A no-op for versions that already use it.
+  postPatch = ''
+    sed -i -E 's/\bcute\.core\.(ThrMma|ThrCopy|TiledMma|TiledCopy)\b/cute.\1/g' quack/*.py
+  '';
+
   extraDependencies = [
     nvidia-cutlass-dsl
     apache-tvm-ffi

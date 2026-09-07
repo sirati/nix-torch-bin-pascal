@@ -120,6 +120,18 @@ def fetch_pypi_wheels(project: str, version: str) -> list[WheelEntry]:
     return entries
 
 
+def fetch_pypi_requires_dist(project: str, version: str) -> list[str]:
+    """
+    Return the ``Requires-Dist`` entries of *project* *version* as PyPI
+    reports them (PEP 508 strings).  Returns ``[]`` when the release does
+    not exist (HTTP 404).
+    """
+    data = _get_json(_RELEASE_URL.format(project=project, version=version))
+    if data is None:
+        return []
+    return list(data.get("info", {}).get("requires_dist") or [])
+
+
 def parse_pypi_wheel_filename(filename: str) -> dict | None:
     """
     Parse a wheel filename into its tag components.

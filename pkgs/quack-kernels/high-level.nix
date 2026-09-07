@@ -9,11 +9,15 @@
 # flake — upstream's PyPI wheels are plain py3-none-any and add nothing over
 # the source build).
 #
-# Note on version pairing: quack-kernels 0.5.0+ requires nvidia-cutlass-dsl
-# >= 4.5.2 while 0.3.11–0.4.x require >= 4.4.2.  The static constraint below
-# only encodes the lower bound; when sonic-moe is in the same environment its
-# constraints pin both packages to a consistent pair (cutlass-dsl 4.4.x +
-# quack <= 0.4.x).
+# Note on version pairing: quack-kernels 0.3.11–0.4.x require
+# nvidia-cutlass-dsl >= 4.4.2 and 0.5.0 >= 4.5.2 (0.5.1+ pin one exact DSL
+# release each and are not offered here).  The static constraint below only
+# encodes the lower bound; the resolver then takes the newest DSL every
+# package in the environment accepts, and overlay-source.nix rewrites the
+# `cute.core.ThrMma` / `ThrCopy` annotations that DSL 4.6 moved.  Verified
+# pair: quack-kernels 0.4.1 + nvidia-cutlass-dsl 4.8.0.dev0 (torch 2.10.0,
+# GB202 — the kennel MoE kernel suite of the consuming project).  When
+# sonic-moe is in the same environment its constraints keep quack <= 0.4.x.
 #
 # hldHelpers and packageName are injected automatically by pkgs/default.nix.
 #

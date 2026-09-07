@@ -4,8 +4,13 @@
 #
 #   cuda-pathfinder  →  cuda-bindings  →  cuda-python (meta)
 #                                              │
-#   nvidia-cutlass-dsl-libs-base  ─────────────┘  (+ numpy, typing-extensions)
-#   nvidia-cutlass-dsl-libs-cu13                  (cu130 only)
+#   nvidia-cutlass-dsl-libs-base  ─────────────┘  (+ numpy, typing-extensions;
+#                                                  from 4.6.0 the derivation
+#                                                  also installs libs-core and
+#                                                  the flavor wheel libs-cu12 /
+#                                                  libs-cu13, + protobuf and
+#                                                  nvidia-cuda-nvdisasm)
+#   nvidia-cutlass-dsl-libs-cu13                  (cu130 only, up to 4.5.x)
 #   nvidia-cutlass-dsl (meta wheel, this derivation's pname)
 #
 # The meta wheel is metadata-only; it exists so that dependants whose
@@ -48,15 +53,25 @@ let
       + "${pyVer}/${os}/${arch}"
     ));
 
+  fetchWheel =
+    wheel:
+    pkgs.fetchurl {
+      inherit (wheel) url hash;
+      name = wheel.name;
+    };
+
   # Minimal wheel-install derivation; all CuTeDSL family members are plain
-  # wheel installs with no compilation step.
+  # wheel installs with no compilation step.  `extraWheels` install into the
+  # same output (the install hook installs every wheel in dist/).
   mkWheelPkg =
     {
       pname,
       version,
       wheel,
+      extraWheels ? [ ],
       dependencies ? [ ],
       pythonImportsCheck ? [ ],
+      postInstall ? "",
       description,
     }:
     pp.buildPythonPackage {
@@ -65,13 +80,13 @@ let
         version
         dependencies
         pythonImportsCheck
+        postInstall
         ;
       format = "wheel";
 
-      src = pkgs.fetchurl {
-        inherit (wheel) url hash;
-        name = wheel.name;
-      };
+      src = fetchWheel wheel;
+
+      preInstall = lib.concatMapStrings (w: "cp ${fetchWheel w} dist/${w.name}\n") extraWheels;
 
       build-system = [ ];
 
@@ -128,25 +143,65 @@ let
 
   # ── CuTeDSL wheels ─────────────────────────────────────────────────────────
 
+  # From 4.6.0 the family splits: libs-base holds the compiled MLIR
+  # libraries, libs-core the pure-Python frontend (the `cutlass` package:
+  # base_dsl, cute, pipeline, …) and the toolkit flavor wheel (libs-cu12 /
+  # libs-cu13) the flavor's `cutlass/_mlir/_mlir_libs/_cutlass_ir.cu1N…so`
+  # plus the cu1N/lib runtime.  The frontend discovers the flavor by listing
+  # its own _mlir_libs directory, so the three wheels must share ONE
+  # nvidia_cutlass_dsl package directory: libs-core and the flavor wheel
+  # install into the libs-base derivation.  libs-core also requires protobuf
+  # and the nvidia-cuda-nvdisasm wheel (the nvdisasm binary for SASS dumps).
+  splitLayout = hashes ? core;
+
+  flavorSection =
+    sectionName:
+    hashes.${sectionName} or (throw (
+      "nvidia-cutlass-dsl ${version}: no libs-${sectionName} wheels published "
+      + "for this version (required for ${cudaLabel})"
+    ));
+
+  flavorWheel =
+    if isCu13 then lookupWheel "libs-cu13" (flavorSection "cu13")
+    else lookupWheel "libs-cu12" (flavorSection "cu12");
+
+  nvdisasmWheel =
+    hashes.nvdisasm.${os}.${arch} or (throw (
+      "nvidia-cutlass-dsl ${version}: no nvidia-cuda-nvdisasm wheel for ${os}/${arch}"
+    ));
+
+  nvdisasm = mkWheelPkg {
+    pname = "nvidia-cuda-nvdisasm";
+    version = builtins.elemAt (lib.splitString "-" nvdisasmWheel.name) 1;
+    wheel = nvdisasmWheel;
+    description = "NVIDIA CUDA nvdisasm binary (pre-built wheel)";
+  };
+
   libs-base = mkWheelPkg {
     pname = "nvidia-cutlass-dsl-libs-base";
     inherit version;
     wheel = lookupWheel "libs-base" hashes.base;
+    extraWheels = lib.optionals splitLayout [ hashes.core flavorWheel ];
     dependencies = cudaPythonChain ++ [
       pp.numpy
       pp.typing-extensions
+    ] ++ lib.optionals splitLayout [
+      pp.protobuf
+      nvdisasm
     ];
     description = "CUTLASS CuTeDSL core libraries (pre-built wheel)";
   };
 
+  # Up to 4.5.x the cu12 runtime ships inside libs-base and the cu13 wheel
+  # adds the CUDA 13 toolkit libraries as its own distribution.
   libs-cu13 = mkWheelPkg {
     pname = "nvidia-cutlass-dsl-libs-cu13";
     inherit version;
-    wheel = lookupWheel "libs-cu13" (
-      hashes.cu13 or (throw "nvidia-cutlass-dsl ${version}: no libs-cu13 wheels published for this version (required for ${cudaLabel})")
-    );
+    wheel = lookupWheel "libs-cu13" (flavorSection "cu13");
     description = "CUTLASS CuTeDSL CUDA 13 toolkit libraries (pre-built wheel)";
   };
+
+  dslMembers = [ libs-base ] ++ lib.optional (isCu13 && !splitLayout) libs-cu13;
 
 in
 pp.buildPythonPackage {
@@ -161,17 +216,17 @@ pp.buildPythonPackage {
 
   build-system = [ ];
 
-  dependencies = [ libs-base ] ++ lib.optional isCu13 libs-cu13;
+  dependencies = dslMembers;
 
   doCheck = false;
 
-  # libs-base uses a .pth-redirect layout (cutlass lives under
-  # nvidia_cutlass_dsl/python_packages/, exposed via nvidia_cutlass_dsl.pth).
-  # .pth files are processed for site dirs (and for NIX_PYTHONPATH via the
-  # nixpkgs sitecustomize in the final env) but NOT for plain PYTHONPATH,
-  # which is what pythonImportsCheck uses — so run a site-aware import check
-  # instead.  `import cutlass` loads the bundled MLIR libraries but does not
-  # touch the GPU/driver, so it is safe inside the build sandbox.
+  # The meta wheel's .pth redirects to nvidia_cutlass_dsl/dsl_packages
+  # (libs-base up to 4.5.x carries the redirect itself).  .pth files are
+  # processed for site dirs (and for NIX_PYTHONPATH via the nixpkgs
+  # sitecustomize in the final env) but NOT for plain PYTHONPATH, which is
+  # what pythonImportsCheck uses — so run a site-aware import check instead.
+  # `import cutlass` loads the bundled MLIR libraries but does not touch the
+  # GPU/driver, so it is safe inside the build sandbox.
   postInstall = ''
     echo "checking cutlass import (site-aware) …"
     python -c "

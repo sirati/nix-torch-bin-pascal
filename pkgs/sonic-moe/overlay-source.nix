@@ -22,13 +22,16 @@ buildSourcePackage {
   cudaSupport = false;
 
   # Strip upstream's torch version ceiling (e.g. "torch>=2.7.1,<=2.9.1" →
-  # "torch>=2.7.1"): sonic-moe never touches the torch C++ ABI, and newer
-  # torch was verified working (see high-level.nix).  Without this,
-  # pythonRuntimeDepsCheck rejects the build against torch > 2.9.1.
-  # The sed is a no-op if a future version drops/renames the pin — the
+  # "torch>=2.7.1") and turn its exact CuTeDSL pin ("nvidia-cutlass-dsl==4.4.2")
+  # into a floor: sonic-moe never touches the torch C++ ABI, its kernels are
+  # JIT-compiled by the DSL, and newer torch / DSL releases were verified
+  # working (see high-level.nix).  Without this, pythonRuntimeDepsCheck
+  # rejects the build against torch > 2.9.1 or any other DSL release.
+  # Each sed is a no-op if a future version drops/renames the pin — the
   # runtime-deps check then fails loudly, flagging that this needs a revisit.
   postPatch = ''
     sed -i -E 's/"torch>=([0-9.]+),<=[0-9.]+"/"torch>=\1"/' pyproject.toml
+    sed -i -E 's/"nvidia-cutlass-dsl==([0-9.]+)"/"nvidia-cutlass-dsl>=\1"/' pyproject.toml
   '';
 
   extraDependencies = [
