@@ -166,7 +166,15 @@ def _run_github_release(module: ModuleType, github_repo: str, args) -> None:
 
     has_source_hashes    = getattr(module, "HAS_SOURCE_HASHES",     True)
     with_submodules      = getattr(module, "WITH_SUBMODULES",        False)
+    source_only_package  = getattr(module, "SOURCE_ONLY_PACKAGE",    False)
+    include_prereleases  = getattr(module, "INCLUDE_PRERELEASES",    False)
+    filter_tags_fn       = getattr(module, "filter_tags",            None)
     cuda_version_examples = getattr(module, "CUDA_VERSION_EXAMPLES", "cu11, cu12, cu13")
+
+    if source_only_package:
+        args.source_only = True
+    if include_prereleases:
+        args.prereleases = True
 
     binary_hashes_dir = os.path.join(pkg_dir, "binary-hashes")
     source_hashes_dir = os.path.join(pkg_dir, "source-hashes") if has_source_hashes else None
@@ -184,6 +192,7 @@ def _run_github_release(module: ModuleType, github_repo: str, args) -> None:
         schema, dimensions, version_spec, header_template,
         pkg_dir, args,
         with_submodules=with_submodules,
+        filter_tags_fn=filter_tags_fn,
     )
 
 

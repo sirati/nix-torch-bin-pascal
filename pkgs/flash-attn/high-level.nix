@@ -50,9 +50,12 @@ assert hldHelpers.isHLD torch;
   # mkOverlayInfo is injected by concretise from the validated HLD.
   # flash-attn wheels are generic across CUDA 12.x, so we always use "cu12".
   buildBin = { mkOverlayInfo, pkgs, cudaPackages, cudaLabel, resolvedDeps, version, wrappers ? null }:
-    import ./overlay-bin.nix {
-      overlayInfo = mkOverlayInfo { inherit pkgs cudaPackages version resolvedDeps; };
-      cudaVersion = "cu12";
+    import ./without-cute.nix {
+      inherit pkgs;
+      package = import ./overlay-bin.nix {
+        overlayInfo = mkOverlayInfo { inherit pkgs cudaPackages version resolvedDeps; };
+        cudaVersion = "cu12";
+      };
     };
 
   # ── Build from source ──────────────────────────────────────────────────────
@@ -66,7 +69,10 @@ assert hldHelpers.isHLD torch;
             "flash-attn" "pkgs/flash-attn" ./source-hashes
             { inherit version cudaLabel; };
     in
-    import ./overlay-source.nix {
-      overlayInfo = mkOverlayInfo { inherit pkgs cudaPackages resolvedDeps; version = v; };
+    import ./without-cute.nix {
+      inherit pkgs;
+      package = import ./overlay-source.nix {
+        overlayInfo = mkOverlayInfo { inherit pkgs cudaPackages resolvedDeps; version = v; };
+      };
     };
 }

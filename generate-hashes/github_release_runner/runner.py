@@ -261,6 +261,7 @@ def run_all_hashes(
     args,
     *,
     with_submodules: bool = False,
+    filter_tags_fn = None,
     force_overwrite: bool | None = None,
 ) -> None:
     """
@@ -323,6 +324,12 @@ def run_all_hashes(
         force_overwrite = bool(getattr(args, "tag", None)) or regenerate
 
     tags, too_old_tags = resolve_tags(github_repo, args)
+    if filter_tags_fn is not None:
+        tags = [tag for tag in tags if filter_tags_fn(tag)]
+        too_old_tags = [tag for tag in too_old_tags if filter_tags_fn(tag)]
+        if not tags:
+            print("No release tags matched this package's tag filter.", file=sys.stderr)
+            sys.exit(1)
 
     if source_only:
         # Do not touch missing-digests.txt here — we fetched no wheels so we

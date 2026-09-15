@@ -33,7 +33,8 @@ buildSourcePackage {
   # result type is inferred), so the 12.9 branch raises `TypeError` in every
   # kernel using `atomic_add_i32` / `atomic_inc_i32` (the sonic-moe backward).
   # Force the inferred-result spelling: the branch predicate becomes False.
-  postPatch = ''
+  postPatch = overlayInfo.pkgs.lib.optionalString
+    (overlayInfo.pkgs.lib.versionOlder overlayInfo.version "0.6") ''
     sed -i -E 's/\bcute\.core\.(ThrMma|ThrCopy|TiledMma|TiledCopy)\b/cute.\1/g' quack/*.py
     sed -i 's/CUDA_VERSION\.major == 12 and CUDA_VERSION\.minor == 9/False/g' quack/utils.py
   '';

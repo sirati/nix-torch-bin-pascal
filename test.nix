@@ -10,6 +10,9 @@ let
   lib = pkgs.lib;
   concretise = import ./concretise;
   testRunnerContent = builtins.readFile ./test-runner/main.py;
+  testFlashAttn4Cu128Result = import ./pkgs/flash-attn4/test.nix {
+    inherit pkgs pytorchScope concretise;
+  };
 
   # ── Example: validates the pattern shown in example/flake.nix ────────────
   exampleResult = import ./example {
@@ -270,6 +273,7 @@ in
     test-causal-conv1d-from-source-py313-cu128 = testCausalCu128FromSourceResult.env;
     test-flash-attn-bin-py313-cu128 = testFlashAttnBinCu128Result.env;
     test-flash-attn-source-py313-cu128 = testFlashAttnSourceCu128Result.env;
+    test-flash-attn4-py313-cu128 = testFlashAttn4Cu128Result.env;
     test-all-py313-cu128 = testAllCu128Result.env;
     test-mamba-py313-cu128 = testMambaCu128Result.env;
     test-mamba-source-py313-cu128 = testMambaSourceCu128Result.env;
@@ -289,6 +293,7 @@ in
     test-causal-conv1d-from-source-py313-cu128 = testCausalCu128FromSourceResult.devShell;
     test-flash-attn-bin-py313-cu128 = testFlashAttnBinCu128Result.devShell;
     test-flash-attn-source-py313-cu128 = testFlashAttnSourceCu128Result.devShell;
+    test-flash-attn4-py313-cu128 = testFlashAttn4Cu128Result.devShell;
     test-all-py313-cu128 = testAllCu128Result.devShell;
     test-mamba-py313-cu128 = testMambaCu128Result.devShell;
     test-mamba-source-py313-cu128 = testMambaSourceCu128Result.devShell;
@@ -308,6 +313,7 @@ in
     test-causal-conv1d-from-source-py313-cu128 = makeTestApp testCausalCu128FromSourceResult "test-causal-conv1d-from-source-py313-cu128";
     test-flash-attn-bin-py313-cu128 = makeTestApp testFlashAttnBinCu128Result "test-flash-attn-bin-py313-cu128";
     test-flash-attn-source-py313-cu128 = makeTestApp testFlashAttnSourceCu128Result "test-flash-attn-source-py313-cu128";
+    test-flash-attn4-py313-cu128 = makeTestApp testFlashAttn4Cu128Result "test-flash-attn4-py313-cu128";
     test-all-py313-cu128 = makeTestApp testAllCu128Result "test-all-py313-cu128";
     test-mamba-py313-cu128 = makeTestApp testMambaCu128Result "test-mamba-py313-cu128";
     test-mamba-source-py313-cu128 = makeTestApp testMambaSourceCu128Result "test-mamba-source-py313-cu128";

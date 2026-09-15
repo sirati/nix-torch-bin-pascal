@@ -11,7 +11,8 @@
 #
 # Note on version pairing: quack-kernels 0.3.11–0.4.x require
 # nvidia-cutlass-dsl >= 4.4.2 and 0.5.0 >= 4.5.2 (0.5.1+ pin one exact DSL
-# release each and are not offered here).  The static constraint below only
+# release each and are not offered here); 0.6.5 requires DSL >= 4.7.
+# The static constraint below only
 # encodes the lower bound; the resolver then takes the newest DSL every
 # package in the environment accepts, and overlay-source.nix rewrites the
 # `cute.core.ThrMma` / `ThrCopy` annotations that DSL 4.6 moved.  Verified
@@ -81,6 +82,10 @@ assert hldHelpers.isHLD torch-c-dlpack-ext;
             "quack-kernels" "pkgs/quack-kernels" ./source-hashes
             { inherit version cudaLabel; };
     in
+    assert pkgs.lib.assertMsg
+      (pkgs.lib.versionOlder v "0.6.5"
+        || pkgs.lib.versionAtLeast resolvedDeps."nvidia-cutlass-dsl".version "4.7")
+      "quack-kernels >= 0.6.5 requires nvidia-cutlass-dsl >= 4.7";
     import ./overlay-source.nix {
       overlayInfo = mkOverlayInfo { inherit pkgs cudaPackages resolvedDeps; version = v; };
       nvidia-cutlass-dsl = resolvedDeps."nvidia-cutlass-dsl";

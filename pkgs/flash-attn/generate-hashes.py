@@ -19,3 +19,7 @@ Options (handled by shared main):
 
 WITH_SUBMODULES = True
 CUDA_VERSION_EXAMPLES = "cu12, cu126"
+
+
+def filter_tags(tag: str) -> bool:
+    return not tag.startswith("fa4-")

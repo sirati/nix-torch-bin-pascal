@@ -50,6 +50,8 @@
 #                         cuda_nvcc from build-system, the CUDA libs from
 #                         buildInputs, and CUDA_HOME from env.
 #   fetchSubmodules       bool; default false.  Set true for flash-attn.
+#   sourceSubdir          Build only this source subdirectory; default "".
+#   postUnpack            Shell script string; default "".
 #   postPatch             Shell script string; default "".
 #   preConfigure          Shell script string; default "".
 #   extraBuildSystemPackages
@@ -92,6 +94,8 @@
       # Optional – build
       cudaSupport ? true,
       fetchSubmodules ? false,
+      sourceSubdir ? "",
+      postUnpack ? "",
       postPatch ? "",
       preConfigure ? "",
       extraBuildSystemPackages ? [ ],
@@ -161,19 +165,23 @@
           [ (builtins.replaceStrings [ "-" ] [ "_" ] pname) ];
 
     in
-    pkgs.python3Packages.buildPythonPackage {
+    pkgs.python3Packages.buildPythonPackage ({
       inherit pname version;
 
       # PEP 517 / pyproject-based build.
       pyproject = true;
 
-      src = pkgs.fetchFromGitHub {
-        owner = resolvedSrcOwner;
-        repo = resolvedSrcRepo;
-        rev = resolvedRev;
-        inherit (srcInfo) hash;
-        inherit fetchSubmodules;
-      };
+      src =
+        let
+          source = pkgs.fetchFromGitHub {
+            owner = resolvedSrcOwner;
+            repo = resolvedSrcRepo;
+            rev = resolvedRev;
+            inherit (srcInfo) hash;
+            inherit fetchSubmodules;
+          };
+        in
+        if sourceSubdir == "" then source else (toString source) + "/" + sourceSubdir;
 
       inherit postPatch preConfigure;
 
@@ -243,5 +251,5 @@ ${lib.concatMapStrings (m: "import ${m}\n") importsCheck}"
       '';
 
       inherit meta;
-    };
+    } // lib.optionalAttrs (postUnpack != "") { inherit postUnpack; });
 }
